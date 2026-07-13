@@ -9,12 +9,8 @@
 <body>
   <!-- ===== Intro ===== -->
   <section id="intro" class="intro">
-    <div class="intro__bg"></div>
     <div class="intro__content">
-      <div class="intro__logo-wrap">
-        <img src="assets/logo.png" alt="Euro Detailing" class="intro__logo" />
-        <span class="intro__shine"></span>
-      </div>
+      <div class="intro__logo-wrap"><img src="assets/logo.png" alt="Euro Detailing" class="intro__logo" /><span class="intro__shine"></span></div>
       <p class="intro__tagline">Showroom shine. Every time.</p>
     </div>
     <div class="intro__loader"><div class="intro__loader-bar"></div></div>
@@ -22,32 +18,28 @@
 
   <!-- ===== Passcode ===== -->
   <main id="login" class="login" aria-hidden="true">
-    <div class="login__card">
+    <div class="login__card" id="loginCard">
       <img src="assets/logo.png" alt="Euro Detailing" class="login__logo" />
-      <h1 class="login__title">Euro Detailing</h1>
+      <div class="login__title">Euro Detailing</div>
       <p class="login__subtitle">Enter passcode to continue</p>
-      <form id="passForm" class="login__form" novalidate>
-        <input type="password" id="passcode" class="login__input" inputmode="numeric"
-               placeholder="• • • •" autocomplete="off" maxlength="8" aria-label="Passcode" />
+      <form id="passForm">
+        <input type="password" id="passcode" class="login__input" inputmode="numeric" placeholder="• • • •" autocomplete="off" maxlength="8" aria-label="Passcode" />
         <button type="submit" class="btn btn--primary">Unlock</button>
-        <p class="login__error" id="passError"></p>
       </form>
+      <p class="login__error" id="passError"></p>
     </div>
   </main>
 
-  <!-- ===== App (CRM) ===== -->
+  <!-- ===== App ===== -->
   <div id="app" class="app" aria-hidden="true">
+    <!-- Sidebar (desktop) / top bar (phone) -->
     <aside class="sidebar">
-      <div class="sidebar__brand">
-        <img src="assets/logo.png" alt="" class="sidebar__logo" />
-        <span>Euro Detailing</span>
-      </div>
+      <div class="sidebar__brand"><img src="assets/logo.png" alt="" class="sidebar__logo" /><span>Euro Detailing</span></div>
       <nav class="nav">
-        <button class="nav__item is-active" data-view="dashboard">Dashboard</button>
-        <button class="nav__item" data-view="clients">Clients</button>
-        <button class="nav__item nav__item--soon" data-view="soon" data-label="Appointments">Appointments</button>
-        <button class="nav__item nav__item--soon" data-view="soon" data-label="Vehicles">Vehicles</button>
-        <button class="nav__item nav__item--soon" data-view="soon" data-label="Invoices">Invoices</button>
+        <button class="nav__item is-active" data-view="dashboard"><span class="nav__ico" data-i="dash"></span><span class="nav__lbl">Dashboard</span></button>
+        <button class="nav__item" data-view="clients"><span class="nav__ico" data-i="clients"></span><span class="nav__lbl">Clients</span></button>
+        <button class="nav__item nav__item--soon" data-view="soon" data-label="Bookings"><span class="nav__ico" data-i="book"></span><span class="nav__lbl">Bookings</span></button>
+        <button class="nav__item nav__item--soon" data-view="soon" data-label="Vehicles"><span class="nav__ico" data-i="car"></span><span class="nav__lbl">Vehicles</span></button>
       </nav>
       <button class="sidebar__lock" id="lockBtn">Lock</button>
     </aside>
@@ -55,51 +47,64 @@
     <main class="content">
       <!-- Dashboard -->
       <section class="view is-active" id="view-dashboard">
-        <header class="content__head"><h2>Dashboard</h2></header>
+        <header class="head"><h2>Dashboard</h2></header>
         <div class="stats">
-          <div class="stat"><span class="stat__label">Total clients</span><span class="stat__value" id="statClients">0</span></div>
-          <div class="stat"><span class="stat__label">Vehicles on file</span><span class="stat__value" id="statVehicles">0</span></div>
-          <div class="stat"><span class="stat__label">Added this week</span><span class="stat__value" id="statWeek">0</span></div>
+          <div class="stat"><span class="stat__label">Clients</span><span class="stat__value" id="statClients">0</span></div>
+          <div class="stat"><span class="stat__label">Vehicles</span><span class="stat__value" id="statVehicles">0</span></div>
+          <div class="stat"><span class="stat__label">Revenue</span><span class="stat__value" id="statRevenue">$0</span></div>
         </div>
-        <div class="panel">
-          <h3>Recent clients</h3>
-          <div id="recentClients" class="recent"></div>
-        </div>
+        <div class="panel"><h3>Recent clients</h3><div id="recent" class="recent"></div></div>
       </section>
 
-      <!-- Clients -->
+      <!-- Clients (master-detail) -->
       <section class="view" id="view-clients">
-        <header class="content__head">
-          <h2>Clients</h2>
-          <div class="content__actions">
-            <input type="search" id="clientSearch" class="search" placeholder="Search name, phone, vehicle…" />
-            <button class="btn btn--primary btn--sm" id="addClientBtn">+ Add client</button>
+        <div class="cl">
+          <div class="cl__list" id="clList">
+            <header class="head head--row">
+              <h2>Clients</h2>
+              <button class="btn btn--primary btn--xs" id="addBtn">+ Add</button>
+            </header>
+            <input type="search" class="search" id="search" placeholder="Search name, phone, vehicle…" />
+            <div class="cards" id="clientCards"></div>
+            <div class="empty" id="clientEmpty" hidden>No clients yet. Tap “+ Add”.</div>
           </div>
-        </header>
-        <div id="clientList" class="clients"></div>
-        <div id="clientEmpty" class="empty">No clients yet. Add your first one to get started.</div>
+          <div class="cl__detail" id="clDetail">
+            <div class="detail__placeholder" id="detailPlaceholder">Select a client to see details</div>
+            <div class="detail" id="detailBody" hidden></div>
+          </div>
+        </div>
       </section>
 
-      <!-- Placeholder for upcoming modules -->
+      <!-- Soon -->
       <section class="view" id="view-soon">
-        <header class="content__head"><h2 id="soonTitle">Coming soon</h2></header>
-        <div class="empty" id="soonBody">We'll build this module next.</div>
+        <header class="head"><h2 id="soonTitle">Coming soon</h2></header>
+        <div class="empty" id="soonBody"></div>
       </section>
     </main>
   </div>
 
-  <!-- Add/Edit client modal -->
-  <div class="modal" id="clientModal" aria-hidden="true">
+  <!-- Add / Edit modal -->
+  <div class="modal" id="modal" aria-hidden="true">
     <div class="modal__backdrop" data-close></div>
     <form class="modal__card" id="clientForm">
       <h3 id="modalTitle">Add client</h3>
-      <label class="fld"><span>Name *</span><input id="fName" required /></label>
-      <label class="fld"><span>Phone</span><input id="fPhone" inputmode="tel" /></label>
-      <label class="fld"><span>Vehicle</span><input id="fVehicle" placeholder="e.g. 2021 BMW M4" /></label>
-      <label class="fld"><span>Notes</span><textarea id="fNotes" rows="3"></textarea></label>
+      <div class="grid2">
+        <label class="fld"><span>Name *</span><input id="fName" required /></label>
+        <label class="fld"><span>Phone</span><input id="fPhone" inputmode="tel" /></label>
+        <label class="fld"><span>Email</span><input id="fEmail" inputmode="email" /></label>
+        <label class="fld"><span>Vehicle</span><input id="fVehicle" placeholder="2021 BMW M4" /></label>
+        <label class="fld"><span>Location</span><input id="fLocation" placeholder="City / area" /></label>
+        <label class="fld"><span>Last seen</span><input id="fLastSeen" type="date" /></label>
+      </div>
+      <label class="fld"><span>Notes</span><textarea id="fNotes" rows="2"></textarea></label>
+      <div class="fld">
+        <span>Photos</span>
+        <div class="photoedit" id="photoEdit"></div>
+        <label class="photoadd">+ Add photo<input type="file" id="fPhotos" accept="image/*" multiple hidden /></label>
+      </div>
       <div class="modal__actions">
-        <button type="button" class="btn btn--ghost btn--sm" data-close>Cancel</button>
-        <button type="submit" class="btn btn--primary btn--sm">Save</button>
+        <button type="button" class="btn btn--ghost btn--xs" data-close>Cancel</button>
+        <button type="submit" class="btn btn--primary btn--xs">Save</button>
       </div>
     </form>
   </div>

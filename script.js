@@ -1,199 +1,213 @@
 // ===== Euro Detailing CRM =====
 const PASSCODE = "3333";
-const INTRO_DURATION = 3200;
-const STORAGE_KEY = "eurodetailing.clients.v1";
+const INTRO = 3200;
+const KEY = "eurodetailing.clients.v2";
 
 const intro = document.getElementById("intro");
 const login = document.getElementById("login");
 const app = document.getElementById("app");
 
-/* ---------- Intro -> Passcode ---------- */
-function showLogin() {
-  intro.classList.add("intro--hidden");
-  login.classList.add("login--visible");
-  login.setAttribute("aria-hidden", "false");
-  setTimeout(() => document.getElementById("passcode").focus(), 400);
+/* ---------- Intro -> Login ---------- */
+function showLogin(){ intro.classList.add("intro--hidden"); login.classList.add("login--visible"); setTimeout(()=>passcode.focus(),400); }
+let introTimer = setTimeout(showLogin, INTRO);
+intro.addEventListener("click", ()=>{ if(intro.classList.contains("intro--hidden"))return; clearTimeout(introTimer); showLogin(); });
+
+/* ---------- Passcode ---------- */
+const passForm=document.getElementById("passForm"), passcode=document.getElementById("passcode"),
+      loginCard=document.getElementById("loginCard"), passError=document.getElementById("passError");
+function enterApp(){ login.classList.remove("login--visible"); app.classList.add("app--visible"); render(); }
+function tryUnlock(){
+  if(passcode.value===PASSCODE){ passError.textContent=""; enterApp(); }
+  else{ passError.textContent="Wrong passcode — try again"; loginCard.classList.remove("shake"); void loginCard.offsetWidth; loginCard.classList.add("shake"); passcode.value=""; passcode.focus(); }
 }
-let introTimer = setTimeout(showLogin, INTRO_DURATION);
-intro.addEventListener("click", () => {
-  if (intro.classList.contains("intro--hidden")) return;
-  clearTimeout(introTimer);
-  showLogin();
-});
-
-/* ---------- Passcode -> App ---------- */
-const passForm = document.getElementById("passForm");
-const passInput = document.getElementById("passcode");
-const passCard = document.querySelector(".login__card");
-const passError = document.getElementById("passError");
-
-function enterApp() {
-  login.classList.remove("login--visible");
-  login.setAttribute("aria-hidden", "true");
-  app.classList.add("app--visible");
-  app.setAttribute("aria-hidden", "false");
-  render();
-}
-passForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  if (passInput.value === PASSCODE) {
-    passError.textContent = "";
-    enterApp();
-  } else {
-    passError.textContent = "Wrong passcode — try again";
-    passCard.classList.remove("shake");
-    void passCard.offsetWidth;
-    passCard.classList.add("shake");
-    passInput.value = "";
-    passInput.focus();
-  }
-});
-passInput.addEventListener("input", () => { passError.textContent = ""; });
-
-document.getElementById("lockBtn").addEventListener("click", () => {
-  app.classList.remove("app--visible");
-  app.setAttribute("aria-hidden", "true");
-  login.classList.add("login--visible");
-  login.setAttribute("aria-hidden", "false");
-  passInput.value = "";
-  setTimeout(() => passInput.focus(), 300);
-});
+passForm.addEventListener("submit", e=>{ e.preventDefault(); tryUnlock(); });
+passcode.addEventListener("input", ()=>{ passError.textContent=""; if(passcode.value.length===4) tryUnlock(); });
+document.getElementById("lockBtn").addEventListener("click", ()=>{ app.classList.remove("app--visible"); login.classList.add("login--visible"); passcode.value=""; setTimeout(()=>passcode.focus(),300); });
 
 /* ---------- Navigation ---------- */
-const navItems = document.querySelectorAll(".nav__item");
-navItems.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    navItems.forEach((b) => b.classList.remove("is-active"));
-    btn.classList.add("is-active");
-    const view = btn.dataset.view;
-    document.querySelectorAll(".view").forEach((v) => v.classList.remove("is-active"));
-    document.getElementById("view-" + view).classList.add("is-active");
-    if (view === "soon") {
-      document.getElementById("soonTitle").textContent = btn.dataset.label;
-      document.getElementById("soonBody").textContent =
-        `The ${btn.dataset.label} module is next on the list — we'll build it piece by piece.`;
-    }
-    if (view === "clients") document.getElementById("clientSearch").focus();
+const navItems=document.querySelectorAll(".nav__item");
+navItems.forEach(btn=>btn.addEventListener("click", ()=>{
+  navItems.forEach(b=>b.classList.remove("is-active")); btn.classList.add("is-active");
+  const v=btn.dataset.view;
+  document.querySelectorAll(".view").forEach(s=>s.classList.remove("is-active"));
+  document.getElementById("view-"+v).classList.add("is-active");
+  if(v==="soon"){ document.getElementById("soonTitle").textContent=btn.dataset.label; document.getElementById("soonBody").textContent=`The ${btn.dataset.label} module is next — we'll build it piece by piece.`; }
+  if(v==="clients") search.focus();
+}));
+
+/* ---------- Data ---------- */
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) }catch{ return null } }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(clients)) }catch(e){ alert("Storage full — remove some photos."); } }
+let clients = load();
+if(!clients){
+  const today=new Date().toISOString().slice(0,10);
+  clients=[
+    {id:"a",created:Date.now(),name:"John Smith",phone:"555-0142",email:"john@email.com",vehicle:"2021 BMW M4",location:"Miami, FL",notes:"Ceramic coating due in spring.",lastSeen:today,photos:[],payments:[{amount:240,date:today},{amount:180,date:"2025-11-02"}]},
+    {id:"b",created:Date.now(),name:"Maria Garcia",phone:"555-0198",email:"maria@email.com",vehicle:"2019 Audi Q5",location:"Coral Gables",notes:"Prefers weekend drop-off.",lastSeen:"2026-06-20",photos:[],payments:[{amount:140,date:"2026-06-20"}]},
+    {id:"c",created:Date.now()-9*864e5,name:"David Chen",phone:"555-0173",email:"david@email.com",vehicle:"2022 Mercedes C300",location:"Brickell",notes:"Full detail monthly.",lastSeen:"2026-07-01",photos:[],payments:[{amount:300,date:"2026-07-01"},{amount:300,date:"2026-06-01"},{amount:300,date:"2026-05-01"}]}
+  ];
+  save();
+}
+
+/* ---------- Helpers ---------- */
+const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money=n=>"$"+(Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:0});
+function fmtDate(d){ if(!d)return"—"; const dt=new Date(d+(d.length<=10?"T00:00:00":"")); return isNaN(dt)?d:dt.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
+const total=c=>(c.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+function lastPay(c){ const ps=(c.payments||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")); return ps[0]||null; }
+function lastSeenOf(c){ const lp=lastPay(c); return c.lastSeen || (lp&&lp.date) || null; }
+const initials=n=>(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+function avatar(c,cls){ return c.photos&&c.photos[0] ? `<img class="${cls}" src="${c.photos[0]}" alt="">` : `<div class="${cls}">${esc(initials(c.name))}</div>`; }
+
+/* Resize an image file to a data URL to keep storage light */
+function fileToDataURL(file,max=900){
+  return new Promise(res=>{
+    const r=new FileReader();
+    r.onload=()=>{ const img=new Image(); img.onload=()=>{
+      let{width:w,height:h}=img; if(w>h&&w>max){h=h*max/w;w=max}else if(h>max){w=w*max/h;h=max}
+      const cv=document.createElement("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
+      res(cv.toDataURL("image/jpeg",0.78));
+    }; img.src=r.result; };
+    r.readAsDataURL(file);
   });
-});
-
-/* ---------- Clients data ---------- */
-function loadClients() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-  catch { return []; }
 }
-function saveClients(list) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch {}
-}
-let clients = loadClients();
 
-/* ---------- Modal (add / edit) ---------- */
-const modal = document.getElementById("clientModal");
-const clientForm = document.getElementById("clientForm");
-const modalTitle = document.getElementById("modalTitle");
-const fName = document.getElementById("fName");
-const fPhone = document.getElementById("fPhone");
-const fVehicle = document.getElementById("fVehicle");
-const fNotes = document.getElementById("fNotes");
-let editingId = null;
-
-function openModal(client) {
-  editingId = client ? client.id : null;
-  modalTitle.textContent = client ? "Edit client" : "Add client";
-  fName.value = client ? client.name : "";
-  fPhone.value = client ? client.phone : "";
-  fVehicle.value = client ? client.vehicle : "";
-  fNotes.value = client ? client.notes : "";
-  modal.classList.add("is-open");
-  modal.setAttribute("aria-hidden", "false");
-  setTimeout(() => fName.focus(), 50);
-}
-function closeModal() {
-  modal.classList.remove("is-open");
-  modal.setAttribute("aria-hidden", "true");
-  editingId = null;
-}
-document.getElementById("addClientBtn").addEventListener("click", () => openModal(null));
-modal.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", closeModal));
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modal.classList.contains("is-open")) closeModal(); });
-
-clientForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const name = fName.value.trim();
-  if (!name) return;
-  const data = { name, phone: fPhone.value.trim(), vehicle: fVehicle.value.trim(), notes: fNotes.value.trim() };
-  if (editingId) {
-    clients = clients.map((c) => (c.id === editingId ? { ...c, ...data } : c));
-  } else {
-    clients.unshift({ id: Date.now().toString(36), created: Date.now(), ...data });
-  }
-  saveClients(clients);
-  closeModal();
-  render();
-});
-
-/* ---------- Rendering ---------- */
-const clientList = document.getElementById("clientList");
-const clientEmpty = document.getElementById("clientEmpty");
-const clientSearch = document.getElementById("clientSearch");
-
-function esc(s) { return (s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-
-function renderClients() {
-  const q = clientSearch.value.trim().toLowerCase();
-  const filtered = clients.filter((c) =>
-    [c.name, c.phone, c.vehicle].some((f) => (f || "").toLowerCase().includes(q))
-  );
-  clientEmpty.hidden = clients.length !== 0;
-  if (clients.length === 0) { clientList.innerHTML = ""; return; }
-  if (filtered.length === 0) {
-    clientList.innerHTML = `<div class="empty">No clients match “${esc(q)}”.</div>`;
-    return;
-  }
-  clientList.innerHTML = filtered.map((c) => `
-    <article class="client">
-      <div class="client__name">${esc(c.name)}</div>
-      ${c.vehicle ? `<div class="client__meta"><b>Vehicle:</b> ${esc(c.vehicle)}</div>` : ""}
-      ${c.phone ? `<div class="client__meta"><b>Phone:</b> ${esc(c.phone)}</div>` : ""}
-      ${c.notes ? `<div class="client__notes">${esc(c.notes)}</div>` : ""}
-      <div class="client__actions">
-        <button class="client__btn" data-edit="${c.id}">Edit</button>
-        <button class="client__btn client__btn--del" data-del="${c.id}">Delete</button>
+/* ---------- Clients list ---------- */
+const search=document.getElementById("search"), clientCards=document.getElementById("clientCards"),
+      clientEmpty=document.getElementById("clientEmpty");
+function renderCards(){
+  const q=search.value.trim().toLowerCase();
+  const f=clients.filter(c=>[c.name,c.phone,c.email,c.vehicle,c.location].some(x=>(x||"").toLowerCase().includes(q)));
+  clientEmpty.hidden=clients.length!==0;
+  if(clients.length===0){ clientCards.innerHTML=""; return; }
+  if(f.length===0){ clientCards.innerHTML=`<div class="empty">No matches.</div>`; return; }
+  clientCards.innerHTML=f.map(c=>{
+    const repeat=(c.payments||[]).length>=2?`<span class="tagrepeat">repeat</span>`:"";
+    const meta=c.vehicle||c.phone||c.location||"";
+    return `<article class="ccard" data-open="${c.id}">
+      ${avatar(c,"ccard__avatar")}
+      <div class="ccard__main">
+        <div class="ccard__name">${esc(c.name)} ${repeat}</div>
+        <div class="ccard__meta">${esc(meta)}</div>
       </div>
-    </article>`).join("");
+      <div class="ccard__right">
+        <div class="ccard__paid">${money(total(c))}</div>
+        <div class="ccard__seen">${lastSeenOf(c)?fmtDate(lastSeenOf(c)):"—"}</div>
+      </div>
+    </article>`;
+  }).join("");
+}
+clientCards.addEventListener("click", e=>{ const id=e.target.closest("[data-open]")?.dataset.open; if(id) openDetail(id); });
+search.addEventListener("input", renderCards);
+
+/* ---------- Client detail ---------- */
+const clDetail=document.getElementById("clDetail"), detailBody=document.getElementById("detailBody"),
+      detailPlaceholder=document.getElementById("detailPlaceholder");
+let currentId=null;
+
+function openDetail(id){ currentId=id; renderDetail(); clDetail.classList.add("is-open"); detailPlaceholder.style.display="none"; detailBody.hidden=false; }
+function closeDetail(){ clDetail.classList.remove("is-open"); currentId=null; detailBody.hidden=true; detailPlaceholder.style.display=""; }
+
+function renderDetail(){
+  const c=clients.find(x=>x.id===currentId); if(!c) return;
+  const lp=lastPay(c);
+  const photos=(c.photos&&c.photos.length)?c.photos.map((p,i)=>`<img src="${p}" alt="photo ${i+1}">`).join(""):`<span class="nophoto">No photos yet.</span>`;
+  const pays=(c.payments&&c.payments.length)?c.payments.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p=>`<div class="pay"><span>${fmtDate(p.date)}</span><b>${money(p.amount)}</b></div>`).join(""):`<div class="pay"><span style="color:var(--muted)">No payments logged.</span></div>`;
+  const row=(l,v)=>v?`<div class="drow"><span class="drow__l">${l}</span><span class="drow__v">${esc(v)}</span></div>`:"";
+  detailBody.innerHTML=`
+    <div class="detail__top">
+      <button class="detail__back" id="detailBack">← Back</button>
+      <div class="detail__title">${esc(c.name)}</div>
+    </div>
+    <div class="detail__hero">${avatar(c,"detail__avatar")}
+      <div>${(c.payments||[]).length>=2?`<span class="tagrepeat">repeat client</span>`:""}
+      <div style="color:var(--muted);font-size:.82rem;margin-top:.2rem">${esc(c.vehicle||"")}</div></div>
+    </div>
+    <div class="dstats">
+      <div class="dstat"><span class="dstat__l">Last seen</span><span class="dstat__v">${lastSeenOf(c)?fmtDate(lastSeenOf(c)):"—"}</span></div>
+      <div class="dstat"><span class="dstat__l">Last payment</span><span class="dstat__v">${lp?money(lp.amount):"—"}</span></div>
+      <div class="dstat"><span class="dstat__l">Total paid</span><span class="dstat__v good">${money(total(c))}</span></div>
+    </div>
+    <div class="drows">
+      ${row("Phone",c.phone)}${row("Email",c.email)}${row("Vehicle",c.vehicle)}${row("Location",c.location)}
+      ${(!c.phone&&!c.email&&!c.vehicle&&!c.location)?'<div class="drow"><span class="drow__l">No contact info yet</span></div>':""}
+    </div>
+    <div class="dsec"><div class="dsec__h"><h4>Photos</h4></div><div class="photos">${photos}</div></div>
+    <div class="dsec"><div class="dsec__h"><h4>Payments</h4></div>
+      ${pays}
+      <div class="payadd">
+        <input type="number" id="payAmt" placeholder="Amount" min="0" />
+        <input type="date" id="payDate" value="${new Date().toISOString().slice(0,10)}" />
+        <button class="btn btn--primary btn--xs" id="payAdd">Add</button>
+      </div>
+    </div>
+    ${c.notes?`<div class="dsec"><div class="dsec__h"><h4>Notes</h4></div><div class="notebox">${esc(c.notes)}</div></div>`:""}
+    <div class="detail__actions">
+      <button class="btn btn--ghost btn--xs" id="detailEdit">Edit</button>
+      <button class="btn btn--danger btn--xs" id="detailDelete">Delete</button>
+    </div>`;
+
+  detailBody.querySelector("#detailBack").addEventListener("click", closeDetail);
+  detailBody.querySelector("#detailEdit").addEventListener("click", ()=>openModal(c));
+  detailBody.querySelector("#detailDelete").addEventListener("click", ()=>{
+    if(confirm(`Delete ${c.name}? This can't be undone.`)){ clients=clients.filter(x=>x.id!==c.id); save(); closeDetail(); render(); }
+  });
+  detailBody.querySelector("#payAdd").addEventListener("click", ()=>{
+    const amt=parseFloat(detailBody.querySelector("#payAmt").value);
+    const date=detailBody.querySelector("#payDate").value;
+    if(!amt||amt<=0){ return; }
+    c.payments=c.payments||[]; c.payments.push({amount:amt,date:date||new Date().toISOString().slice(0,10)});
+    c.lastSeen=date; save(); renderDetail(); renderCards(); renderDashboard();
+  });
 }
 
-clientList.addEventListener("click", (e) => {
-  const editId = e.target.dataset.edit;
-  const delId = e.target.dataset.del;
-  if (editId) openModal(clients.find((c) => c.id === editId));
-  if (delId) {
-    const c = clients.find((x) => x.id === delId);
-    if (confirm(`Delete ${c ? c.name : "this client"}?`)) {
-      clients = clients.filter((x) => x.id !== delId);
-      saveClients(clients);
-      render();
-    }
-  }
+/* ---------- Add / Edit modal ---------- */
+const modal=document.getElementById("modal"), clientForm=document.getElementById("clientForm"), modalTitle=document.getElementById("modalTitle"),
+      fName=document.getElementById("fName"), fPhone=document.getElementById("fPhone"), fEmail=document.getElementById("fEmail"),
+      fVehicle=document.getElementById("fVehicle"), fLocation=document.getElementById("fLocation"), fLastSeen=document.getElementById("fLastSeen"),
+      fNotes=document.getElementById("fNotes"), fPhotos=document.getElementById("fPhotos"), photoEdit=document.getElementById("photoEdit");
+let editId=null, editPhotos=[];
+
+function renderPhotoEdit(){
+  photoEdit.innerHTML=editPhotos.map((p,i)=>`<div class="photoedit__item"><img src="${p}" alt=""><button type="button" class="photoedit__del" data-ph="${i}">×</button></div>`).join("");
+}
+photoEdit.addEventListener("click", e=>{ const i=e.target.dataset.ph; if(i!=null){ editPhotos.splice(+i,1); renderPhotoEdit(); } });
+fPhotos.addEventListener("change", async e=>{
+  for(const file of e.target.files){ editPhotos.push(await fileToDataURL(file)); }
+  renderPhotoEdit(); fPhotos.value="";
 });
-clientSearch.addEventListener("input", renderClients);
 
-function renderDashboard() {
-  document.getElementById("statClients").textContent = clients.length;
-  document.getElementById("statVehicles").textContent = clients.filter((c) => c.vehicle).length;
-  const weekAgo = Date.now() - 7 * 864e5;
-  document.getElementById("statWeek").textContent = clients.filter((c) => (c.created || 0) > weekAgo).length;
-  const recent = document.getElementById("recentClients");
-  if (clients.length === 0) {
-    recent.innerHTML = `<div class="recent__row">No clients yet.</div>`;
-  } else {
-    recent.innerHTML = clients.slice(0, 5).map((c) =>
-      `<div class="recent__row"><b>${esc(c.name)}</b><span>${esc(c.vehicle || "—")}</span></div>`
-    ).join("");
-  }
+function openModal(c){
+  editId=c?c.id:null; editPhotos=c?(c.photos||[]).slice():[];
+  modalTitle.textContent=c?"Edit client":"Add client";
+  fName.value=c?c.name:""; fPhone.value=c?c.phone:""; fEmail.value=c?c.email||"":"";
+  fVehicle.value=c?c.vehicle:""; fLocation.value=c?c.location||"":""; fLastSeen.value=c?c.lastSeen||"":"";
+  fNotes.value=c?c.notes:""; renderPhotoEdit();
+  modal.classList.add("is-open"); setTimeout(()=>fName.focus(),50);
+}
+function closeModal(){ modal.classList.remove("is-open"); editId=null; editPhotos=[]; }
+document.getElementById("addBtn").addEventListener("click", ()=>openModal(null));
+modal.querySelectorAll("[data-close]").forEach(el=>el.addEventListener("click", closeModal));
+document.addEventListener("keydown", e=>{ if(e.key==="Escape"&&modal.classList.contains("is-open")) closeModal(); });
+
+clientForm.addEventListener("submit", e=>{
+  e.preventDefault();
+  const name=fName.value.trim(); if(!name) return;
+  const data={ name, phone:fPhone.value.trim(), email:fEmail.value.trim(), vehicle:fVehicle.value.trim(),
+    location:fLocation.value.trim(), lastSeen:fLastSeen.value, notes:fNotes.value.trim(), photos:editPhotos.slice() };
+  if(editId){ clients=clients.map(c=>c.id===editId?{...c,...data}:c); }
+  else { clients.unshift({ id:Date.now().toString(36), created:Date.now(), payments:[], ...data }); }
+  save(); closeModal(); render();
+  if(editId===currentId && currentId) renderDetail();
+});
+
+/* ---------- Dashboard ---------- */
+function renderDashboard(){
+  document.getElementById("statClients").textContent=clients.length;
+  document.getElementById("statVehicles").textContent=clients.filter(c=>c.vehicle).length;
+  document.getElementById("statRevenue").textContent=money(clients.reduce((s,c)=>s+total(c),0));
+  const recent=document.getElementById("recent");
+  recent.innerHTML=clients.length?clients.slice(0,5).map(c=>`<div class="recent__row"><b>${esc(c.name)}</b><span>${esc(c.vehicle||"—")}</span></div>`).join(""):`<div class="recent__row">No clients yet.</div>`;
 }
 
-function render() {
-  renderDashboard();
-  renderClients();
-}
+function render(){ renderDashboard(); renderCards(); }
