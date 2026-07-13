@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Euro Detailing</title>
+  <title>Euro Detailing — CRM</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- ===== Animated Intro ===== -->
+  <!-- ===== Intro ===== -->
   <section id="intro" class="intro">
     <div class="intro__bg"></div>
     <div class="intro__content">
@@ -20,48 +20,89 @@
     <div class="intro__loader"><div class="intro__loader-bar"></div></div>
   </section>
 
-  <!-- ===== Login (passcode) ===== -->
+  <!-- ===== Passcode ===== -->
   <main id="login" class="login" aria-hidden="true">
     <div class="login__card">
       <img src="assets/logo.png" alt="Euro Detailing" class="login__logo" />
       <h1 class="login__title">Euro Detailing</h1>
       <p class="login__subtitle">Enter passcode to continue</p>
-
       <form id="passForm" class="login__form" novalidate>
-        <input
-          type="password"
-          id="passcode"
-          class="login__input"
-          inputmode="numeric"
-          placeholder="• • • •"
-          autocomplete="off"
-          maxlength="8"
-          aria-label="Passcode"
-        />
+        <input type="password" id="passcode" class="login__input" inputmode="numeric"
+               placeholder="• • • •" autocomplete="off" maxlength="8" aria-label="Passcode" />
         <button type="submit" class="btn btn--primary">Unlock</button>
         <p class="login__error" id="passError"></p>
       </form>
     </div>
   </main>
 
-  <!-- ===== Home (after unlock) ===== -->
-  <section id="home" class="home" aria-hidden="true">
-    <header class="home__top">
-      <img src="assets/logo.png" alt="Euro Detailing" class="home__logo" />
-      <button class="home__lock" id="lockBtn" title="Lock">Lock</button>
-    </header>
-    <div class="home__hero">
-      <p class="home__eyebrow">Welcome back</p>
-      <h2 class="home__heading">Book your next detail</h2>
-      <p class="home__sub">Premium European auto care — inside and out.</p>
-    </div>
-    <div class="home__grid">
-      <article class="service"><h3>Exterior Detail</h3><p>Hand wash, decon, wax &amp; tire shine.</p><span>from $120</span></article>
-      <article class="service"><h3>Interior Detail</h3><p>Deep vacuum, shampoo &amp; leather care.</p><span>from $140</span></article>
-      <article class="service"><h3>Full Package</h3><p>The complete showroom treatment.</p><span>from $240</span></article>
-      <article class="service service--cta"><h3>Book Now</h3><p>Reserve a slot this week.</p><span>Get started →</span></article>
-    </div>
-  </section>
+  <!-- ===== App (CRM) ===== -->
+  <div id="app" class="app" aria-hidden="true">
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <img src="assets/logo.png" alt="" class="sidebar__logo" />
+        <span>Euro Detailing</span>
+      </div>
+      <nav class="nav">
+        <button class="nav__item is-active" data-view="dashboard">Dashboard</button>
+        <button class="nav__item" data-view="clients">Clients</button>
+        <button class="nav__item nav__item--soon" data-view="soon" data-label="Appointments">Appointments</button>
+        <button class="nav__item nav__item--soon" data-view="soon" data-label="Vehicles">Vehicles</button>
+        <button class="nav__item nav__item--soon" data-view="soon" data-label="Invoices">Invoices</button>
+      </nav>
+      <button class="sidebar__lock" id="lockBtn">Lock</button>
+    </aside>
+
+    <main class="content">
+      <!-- Dashboard -->
+      <section class="view is-active" id="view-dashboard">
+        <header class="content__head"><h2>Dashboard</h2></header>
+        <div class="stats">
+          <div class="stat"><span class="stat__label">Total clients</span><span class="stat__value" id="statClients">0</span></div>
+          <div class="stat"><span class="stat__label">Vehicles on file</span><span class="stat__value" id="statVehicles">0</span></div>
+          <div class="stat"><span class="stat__label">Added this week</span><span class="stat__value" id="statWeek">0</span></div>
+        </div>
+        <div class="panel">
+          <h3>Recent clients</h3>
+          <div id="recentClients" class="recent"></div>
+        </div>
+      </section>
+
+      <!-- Clients -->
+      <section class="view" id="view-clients">
+        <header class="content__head">
+          <h2>Clients</h2>
+          <div class="content__actions">
+            <input type="search" id="clientSearch" class="search" placeholder="Search name, phone, vehicle…" />
+            <button class="btn btn--primary btn--sm" id="addClientBtn">+ Add client</button>
+          </div>
+        </header>
+        <div id="clientList" class="clients"></div>
+        <div id="clientEmpty" class="empty">No clients yet. Add your first one to get started.</div>
+      </section>
+
+      <!-- Placeholder for upcoming modules -->
+      <section class="view" id="view-soon">
+        <header class="content__head"><h2 id="soonTitle">Coming soon</h2></header>
+        <div class="empty" id="soonBody">We'll build this module next.</div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Add/Edit client modal -->
+  <div class="modal" id="clientModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <form class="modal__card" id="clientForm">
+      <h3 id="modalTitle">Add client</h3>
+      <label class="fld"><span>Name *</span><input id="fName" required /></label>
+      <label class="fld"><span>Phone</span><input id="fPhone" inputmode="tel" /></label>
+      <label class="fld"><span>Vehicle</span><input id="fVehicle" placeholder="e.g. 2021 BMW M4" /></label>
+      <label class="fld"><span>Notes</span><textarea id="fNotes" rows="3"></textarea></label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost btn--sm" data-close>Cancel</button>
+        <button type="submit" class="btn btn--primary btn--sm">Save</button>
+      </div>
+    </form>
+  </div>
 
   <script src="script.js"></script>
 </body>
