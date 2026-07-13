@@ -1,19 +1,18 @@
-// ===== Intro -> Login transition =====
+// ===== Euro Detailing — intro -> passcode -> home =====
+const PASSCODE = "3333";
+const INTRO_DURATION = 3200;
+
 const intro = document.getElementById("intro");
 const login = document.getElementById("login");
+const home = document.getElementById("home");
 
-const INTRO_DURATION = 3000; // matches the loader bar animation
-
+// --- Intro -> Login ---
 function showLogin() {
   intro.classList.add("intro--hidden");
-  intro.setAttribute("aria-hidden", "true");
   login.classList.add("login--visible");
   login.setAttribute("aria-hidden", "false");
-  // move focus to the first field once the panel is in view
-  setTimeout(() => document.getElementById("email").focus(), 400);
+  setTimeout(() => document.getElementById("passcode").focus(), 400);
 }
-
-// Auto-advance after the intro plays; allow skipping with a click/keypress.
 const introTimer = setTimeout(showLogin, INTRO_DURATION);
 function skipIntro() {
   if (intro.classList.contains("intro--hidden")) return;
@@ -21,58 +20,42 @@ function skipIntro() {
   showLogin();
 }
 intro.addEventListener("click", skipIntro);
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === "Escape" || e.key === " ") skipIntro();
-}, { once: true });
 
-// ===== Password visibility toggle =====
-const pw = document.getElementById("password");
-const togglePw = document.getElementById("togglePw");
-togglePw.addEventListener("click", () => {
-  const showing = pw.type === "text";
-  pw.type = showing ? "password" : "text";
-  togglePw.textContent = showing ? "Show" : "Hide";
-  togglePw.setAttribute("aria-label", showing ? "Show password" : "Hide password");
-});
+// --- Passcode check ---
+const form = document.getElementById("passForm");
+const input = document.getElementById("passcode");
+const card = document.querySelector(".login__card");
+const errEl = document.getElementById("passError");
 
-// ===== Basic validation + submit =====
-const form = document.getElementById("loginForm");
-const submitBtn = document.getElementById("submitBtn");
-
-function setError(name, message) {
-  const input = document.getElementById(name);
-  const slot = document.querySelector(`.field__error[data-for="${name}"]`);
-  slot.textContent = message;
-  input.classList.toggle("invalid", Boolean(message));
+function unlock() {
+  login.classList.remove("login--visible");
+  login.setAttribute("aria-hidden", "true");
+  home.classList.add("home--visible");
+  home.setAttribute("aria-hidden", "false");
 }
-
-const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
-  const email = document.getElementById("email").value.trim();
-  const password = pw.value;
-  let ok = true;
-
-  if (!emailRe.test(email)) { setError("email", "Enter a valid email address"); ok = false; }
-  else setError("email", "");
-
-  if (password.length < 6) { setError("password", "Password must be at least 6 characters"); ok = false; }
-  else setError("password", "");
-
-  if (!ok) return;
-
-  // Simulate a sign-in request.
-  submitBtn.classList.add("loading");
-  submitBtn.textContent = "Signing in…";
-  setTimeout(() => {
-    submitBtn.classList.remove("loading");
-    submitBtn.textContent = "Signed in ✓";
-    // Next step in a real app: redirect to the dashboard here.
-  }, 1200);
+  if (input.value === PASSCODE) {
+    errEl.textContent = "";
+    unlock();
+  } else {
+    errEl.textContent = "Wrong passcode — try again";
+    card.classList.remove("shake");
+    void card.offsetWidth; // restart animation
+    card.classList.add("shake");
+    input.value = "";
+    input.focus();
+  }
 });
+input.addEventListener("input", () => { errEl.textContent = ""; });
 
-// Clear an error as soon as the user starts fixing the field.
-["email", "password"].forEach((name) => {
-  document.getElementById(name).addEventListener("input", () => setError(name, ""));
+// --- Lock button returns to passcode ---
+document.getElementById("lockBtn").addEventListener("click", () => {
+  home.classList.remove("home--visible");
+  home.setAttribute("aria-hidden", "true");
+  login.classList.add("login--visible");
+  login.setAttribute("aria-hidden", "false");
+  input.value = "";
+  setTimeout(() => input.focus(), 300);
 });
