@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nova</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ===== Animated Intro ===== -->
+  <section id="intro" class="intro" aria-hidden="false">
+    <div class="intro__bg"></div>
+    <div class="intro__content">
+      <svg class="logo" viewBox="0 0 100 100" width="96" height="96" aria-label="Nova logo">
+        <circle class="logo__ring" cx="50" cy="50" r="42" />
+        <path class="logo__mark" d="M32 68 L32 32 L68 68 L68 32" />
+      </svg>
+      <h1 class="intro__title">
+        <span>N</span><span>o</span><span>v</span><span>a</span>
+      </h1>
+      <p class="intro__tagline">Where ideas take flight</p>
+    </div>
+    <div class="intro__loader"><div class="intro__loader-bar"></div></div>
+  </section>
+
+  <!-- ===== Login Page ===== -->
+  <main id="login" class="login" aria-hidden="true">
+    <div class="login__panel login__panel--brand">
+      <svg class="logo logo--small" viewBox="0 0 100 100" width="44" height="44" aria-hidden="true">
+        <circle class="logo__ring" cx="50" cy="50" r="42" />
+        <path class="logo__mark" d="M32 68 L32 32 L68 68 L68 32" />
+      </svg>
+      <h2>Welcome back</h2>
+      <p>Sign in to pick up right where you left off. Your workspace is waiting.</p>
+      <ul class="login__points">
+        <li>Fast, focused, and clutter-free</li>
+        <li>Everything synced across devices</li>
+        <li>Private by default</li>
+      </ul>
+    </div>
+
+    <div class="login__panel login__panel--form">
+      <form class="login__form" id="loginForm" novalidate>
+        <h3>Sign in</h3>
+        <p class="login__subtitle">Enter your details to continue</p>
+
+        <label class="field">
+          <span class="field__label">Email</span>
+          <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required />
+          <span class="field__error" data-for="email"></span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Password</span>
+          <span class="field__wrap">
+            <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+            <button type="button" class="field__toggle" id="togglePw" aria-label="Show password">Show</button>
+          </span>
+          <span class="field__error" data-for="password"></span>
+        </label>
+
+        <div class="login__row">
+          <label class="checkbox">
+            <input type="checkbox" id="remember" />
+            <span>Remember me</span>
+          </label>
+          <a href="#" class="login__link">Forgot password?</a>
+        </div>
+
+        <button type="submit" class="btn btn--primary" id="submitBtn">Sign in</button>
+
+        <div class="divider"><span>or</span></div>
+
+        <button type="button" class="btn btn--ghost">Continue with Google</button>
+
+        <p class="login__foot">Don't have an account? <a href="#" class="login__link">Sign up</a></p>
+      </form>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
