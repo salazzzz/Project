@@ -101,12 +101,12 @@ clientCards.addEventListener("click", e=>{ const id=e.target.closest("[data-open
 search.addEventListener("input", renderCards);
 
 /* ---------- Client detail ---------- */
-const clDetail=document.getElementById("clDetail"), detailBody=document.getElementById("detailBody"),
-      detailPlaceholder=document.getElementById("detailPlaceholder");
+const clRoot=document.querySelector("#view-clients .cl"), detailBody=document.getElementById("detailBody"),
+      detailPlaceholder=document.getElementById("detailPlaceholder"), contentEl=document.querySelector(".content");
 let currentId=null;
 
-function openDetail(id){ currentId=id; renderDetail(); clDetail.classList.add("is-open"); detailPlaceholder.style.display="none"; detailBody.hidden=false; }
-function closeDetail(){ clDetail.classList.remove("is-open"); currentId=null; detailBody.hidden=true; detailPlaceholder.style.display=""; }
+function openDetail(id){ currentId=id; renderDetail(); clRoot.classList.add("showing-detail"); detailPlaceholder.style.display="none"; detailBody.hidden=false; contentEl.scrollTop=0; }
+function closeDetail(){ clRoot.classList.remove("showing-detail"); currentId=null; detailBody.hidden=true; detailPlaceholder.style.display=""; }
 
 function renderDetail(){
   const c=clients.find(x=>x.id===currentId); if(!c) return;
@@ -141,7 +141,7 @@ function renderDetail(){
         <button class="btn btn--primary btn--xs" id="payAdd">Add</button>
       </div>
     </div>
-    ${c.notes?`<div class="dsec"><div class="dsec__h"><h4>Notes</h4></div><div class="notebox">${esc(c.notes)}</div></div>`:""}
+    <div class="dsec"><div class="dsec__h"><h4>Notes</h4></div><textarea class="noteedit" id="noteEdit" placeholder="Add notes about this client…">${esc(c.notes||"")}</textarea></div>
     <div class="detail__actions">
       <button class="btn btn--ghost btn--xs" id="detailEdit">Edit</button>
       <button class="btn btn--danger btn--xs" id="detailDelete">Delete</button>
@@ -152,6 +152,7 @@ function renderDetail(){
   detailBody.querySelector("#detailDelete").addEventListener("click", ()=>{
     if(confirm(`Delete ${c.name}? This can't be undone.`)){ clients=clients.filter(x=>x.id!==c.id); save(); closeDetail(); render(); }
   });
+  detailBody.querySelector("#noteEdit").addEventListener("input", e=>{ c.notes=e.target.value; save(); });
   detailBody.querySelector("#payAdd").addEventListener("click", ()=>{
     const amt=parseFloat(detailBody.querySelector("#payAmt").value);
     const date=detailBody.querySelector("#payDate").value;
