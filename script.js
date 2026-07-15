@@ -149,6 +149,7 @@ function renderDetail(){
     <div class="dsec"><div class="dsec__h"><h4>Payments</h4></div>${pays}
       <div class="payadd"><input type="number" id="payAmt" placeholder="Amount" min="0" /><input type="number" id="payTip" placeholder="Tip" min="0" /><select id="payMethod" class="paysel">${["Cash","Venmo","Zelle","Cash App","Check","Card"].map(x=>`<option>${x}</option>`).join("")}</select><input type="date" id="payDate" value="${new Date().toISOString().slice(0,10)}" /><button class="btn btn--primary btn--xs" id="payAdd">Add</button></div></div>
     <div class="dsec"><div class="dsec__h"><h4>Notes</h4></div><textarea class="noteedit" id="noteEdit" placeholder="Add notes about this client…">${esc(c.notes||"")}</textarea></div>
+    ${typeof vehiclesHTML==="function"?vehiclesHTML(c):""}
     ${typeof clientHistoryHTML==="function"?clientHistoryHTML(c):""}
     <div class="detail__actions"><button class="btn btn--ghost btn--xs" id="detailEdit">Edit</button><button class="btn btn--danger btn--xs" id="detailDelete">Delete</button></div>`;
 
@@ -172,6 +173,16 @@ function renderDetail(){
     try{ const url=await makeBeforeAfter((j.before_photos||[])[0],(j.after_photos||[])[0],{sub:c.name}); await shareTemplate(url,c.name); }catch(e){}
     btn.textContent=orig; btn.disabled=false;
   }));
+  detailBody.querySelectorAll(".ba__invoice").forEach(btn=>btn.addEventListener("click", async ()=>{
+    const j=(jobs||[]).find(x=>x.id===btn.dataset.inv); if(!j) return;
+    const bk=(bookings||[]).find(x=>x.id===j.booking_id);
+    const orig=btn.textContent; btn.textContent="Building…"; btn.disabled=true;
+    try{ await shareInvoice(j,c,bk); }catch(e){}
+    btn.textContent=orig; btn.disabled=false;
+  }));
+  detailBody.querySelector("[data-addveh]")?.addEventListener("click", ()=>openVehicleSheet(c.id,null));
+  detailBody.querySelectorAll("[data-veh]").forEach(el=>el.addEventListener("click", (e)=>{ if(e.target.closest("[data-delveh]"))return; const v=(vehicles||[]).find(x=>x.id===el.dataset.veh); if(v)openVehicleSheet(c.id,v); }));
+  detailBody.querySelectorAll("[data-delveh]").forEach(b=>b.addEventListener("click", async (e)=>{ e.stopPropagation(); if(confirm("Delete this vehicle?")){ await sb.from("vehicles").delete().eq("id",b.dataset.delveh); await loadExtras(); renderDetail(); } }));
   detailBody.querySelector("#payAdd").addEventListener("click", async ()=>{
     const amt=parseFloat(detailBody.querySelector("#payAmt").value);
     const tip=parseFloat(detailBody.querySelector("#payTip").value)||0;
@@ -273,19 +284,20 @@ function renderDashboard(){
 function render(){ renderDashboard(); renderCards(); }
 
 /* =================== Bookings / Start Detail / Settings =================== */
-let bookings = [], services = [], sops = [], appSettings = {}, jobs = [], expenses = [], ownerId = null;
+let bookings = [], services = [], sops = [], appSettings = {}, jobs = [], expenses = [], vehicles = [], ownerId = null;
 
 async function loadExtras() {
   const u = await sb.auth.getUser(); ownerId = u.data.user?.id || null;
-  const [bk, sv, so, st, jb, ex] = await Promise.all([
+  const [bk, sv, so, st, jb, ex, vh] = await Promise.all([
     sb.from("bookings").select("*").order("scheduled_at", { ascending: true }),
     sb.from("services").select("*"),
     sb.from("sops").select("*"),
     sb.from("settings").select("data").maybeSingle(),
     sb.from("jobs").select("*").order("finished_at", { ascending: false }),
     sb.from("expenses").select("*").order("spent_at", { ascending: false }),
+    sb.from("vehicles").select("*").order("created_at", { ascending: false }),
   ]);
-  bookings = bk.data || []; services = sv.data || []; sops = so.data || []; appSettings = (st.data && st.data.data) || {}; jobs = jb.data || []; expenses = ex.data || [];
+  bookings = bk.data || []; services = sv.data || []; sops = so.data || []; appSettings = (st.data && st.data.data) || {}; jobs = jb.data || []; expenses = ex.data || []; vehicles = vh.data || [];
 }
 
 async function syncCal(btn) {
@@ -310,6 +322,7 @@ document.getElementById("bkSeg").addEventListener("click", (e) => {
 document.getElementById("syncBtn").addEventListener("click", (e) => syncCal(e.target));
 
 function renderBookings() {
+  if (bkSeg === "week") { renderWeek(); return; }
   const now = Date.now();
   const isUp = (b) => b.scheduled_at && new Date(b.scheduled_at).getTime() >= now - 2 * 3600e3 && b.status !== "cancelled" && b.status !== "rejected";
   const up = bookings.filter(isUp).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
@@ -443,8 +456,10 @@ function renderSD() {
       </div>
       <button class="btn btn--primary" id="sdPaid" style="margin-top:.8rem">Mark paid &amp; finish</button>
       ${(sd.before[0] && sd.after[0]) ? `<button class="btn btn--ghost" id="sdStory" style="margin-top:.6rem">📸 Make before/after story</button>` : ""}
+      <button class="btn btn--ghost" id="sdInvoice" style="margin-top:.6rem">🧾 Make invoice</button>
       <button class="btn btn--ghost" id="sdReview" style="margin-top:.6rem">⭐ Request a review</button>
       <button class="btn btn--ghost" id="sdCloseDone" style="margin-top:.6rem">Finish without payment</button></div>`;
+    document.getElementById("sdInvoice")?.addEventListener("click", async () => { const c = clients.find((x) => x.id === b.client_id); const synth = { charge_amount: charge, duration_seconds: Math.round((sd.endTs - sd.startTs) / 1000), before_photos: sd.before, after_photos: sd.after }; try { await shareInvoice(synth, c, b); } catch (e) {} });
     document.getElementById("sdStory")?.addEventListener("click", async (e) => { const btn = e.target; btn.textContent = "Building…"; try { const url = await makeBeforeAfter(sd.before[0], sd.after[0], { sub: b.attendee_name || "" }); await shareTemplate(url, b.attendee_name); } catch (er) {} btn.textContent = "📸 Make before/after story"; });
     document.getElementById("sdReview")?.addEventListener("click", () => requestReview(b));
     document.getElementById("sdCloseDone").onclick = async () => { await saveJob(null); closeStartDetail(); };
@@ -592,7 +607,7 @@ function clientHistoryHTML(c) {
   }
   const ba = cj.filter((j) => (j.before_photos && j.before_photos.length) || (j.after_photos && j.after_photos.length));
   if (ba.length) {
-    html += `<div class="dsec"><div class="dsec__h"><h4>Before / after</h4></div>${ba.map((j) => { const bf = (j.before_photos || [])[0], af = (j.after_photos || [])[0]; return `<div class="ba"><div class="ba__pair">${bf ? `<figure class="ba__f"><img src="${bf}" alt=""><figcaption>Before</figcaption></figure>` : ""}${af ? `<figure class="ba__f"><img src="${af}" alt=""><figcaption>After</figcaption></figure>` : ""}</div>${j.finished_at ? `<div class="ba__date">${new Date(j.finished_at).toLocaleDateString()} · ${Math.round((j.duration_seconds || 0) / 60)}m · ${money(j.charge_amount || 0)}</div>` : ""}<button class="btn btn--ghost btn--xs ba__share" data-ba="${j.id}">📸 Make before/after story</button></div>`; }).join("")}</div>`;
+    html += `<div class="dsec"><div class="dsec__h"><h4>Before / after</h4></div>${ba.map((j) => { const bf = (j.before_photos || [])[0], af = (j.after_photos || [])[0]; return `<div class="ba"><div class="ba__pair">${bf ? `<figure class="ba__f"><img src="${bf}" alt=""><figcaption>Before</figcaption></figure>` : ""}${af ? `<figure class="ba__f"><img src="${af}" alt=""><figcaption>After</figcaption></figure>` : ""}</div>${j.finished_at ? `<div class="ba__date">${new Date(j.finished_at).toLocaleDateString()} · ${Math.round((j.duration_seconds || 0) / 60)}m · ${money(j.charge_amount || 0)}</div>` : ""}<button class="btn btn--ghost btn--xs ba__share" data-ba="${j.id}">📸 Story</button><button class="btn btn--ghost btn--xs ba__invoice" data-inv="${j.id}">🧾 Invoice</button></div>`; }).join("")}</div>`;
   }
   return html;
 }
@@ -731,3 +746,109 @@ function requestReview(b) {
   const ph = (b.attendee_phone || b.phone || "").replace(/[^0-9+]/g, "");
   window.location.href = `sms:${ph}${iOS ? "&" : "?"}body=${encodeURIComponent(msg)}`;
 }
+
+/* =================== Vehicles, search, invoices, week view =================== */
+function navTo(view) { const btn = [...document.querySelectorAll(".nav__item")].find((b) => b.dataset.view === view); if (btn) btn.click(); }
+
+function vehiclesHTML(c) {
+  const vs = (vehicles || []).filter((v) => v.client_id === c.id);
+  return `<div class="dsec"><div class="dsec__h"><h4>Vehicles</h4><button class="btn btn--ghost btn--xs" data-addveh="${c.id}">+ Add car</button></div>
+    ${vs.length ? vs.map((v) => `<div class="veh" data-veh="${v.id}"><div class="veh__main"><div class="veh__name">${esc([v.year, v.make, v.model].filter(Boolean).join(" ") || "Vehicle")}</div>${(v.color || v.plate) ? `<div class="veh__meta">${[v.color, v.plate].filter(Boolean).map(esc).join(" · ")}</div>` : ""}</div><button class="pay__b pay__del" data-delveh="${v.id}">✕</button></div>`).join("") : `<div class="veh-empty">No cars saved yet.</div>`}
+  </div>`;
+}
+function openVehicleSheet(clientId, veh) {
+  const wrap = document.createElement("div"); wrap.className = "modal is-open";
+  wrap.innerHTML = `<div class="modal__backdrop" data-x></div><form class="modal__card"><h3>${veh ? "Edit" : "Add"} vehicle</h3>
+    <div class="grid2">
+      <label class="fld"><span>Year</span><input id="vY" inputmode="numeric" value="${esc(veh?.year || "")}"></label>
+      <label class="fld"><span>Make</span><input id="vMk" value="${esc(veh?.make || "")}"></label>
+      <label class="fld"><span>Model</span><input id="vMd" value="${esc(veh?.model || "")}"></label>
+      <label class="fld"><span>Color</span><input id="vC" value="${esc(veh?.color || "")}"></label>
+      <label class="fld"><span>Plate</span><input id="vP" value="${esc(veh?.plate || "")}"></label>
+      <label class="fld"><span>VIN</span><input id="vV" value="${esc(veh?.vin || "")}"></label>
+    </div>
+    <label class="fld" style="margin-top:.5rem"><span>Notes</span><textarea id="vN">${esc(veh?.notes || "")}</textarea></label>
+    <div class="modal__actions"><button type="button" class="btn btn--ghost btn--xs" data-x>Cancel</button><button type="submit" class="btn btn--primary btn--xs">Save</button></div></form>`;
+  document.body.appendChild(wrap);
+  const close = () => wrap.remove(); wrap.querySelectorAll("[data-x]").forEach((el) => el.onclick = close);
+  wrap.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const g = (id) => wrap.querySelector("#" + id).value.trim() || null;
+    const row = { client_id: clientId, year: g("vY"), make: g("vMk"), model: g("vMd"), color: g("vC"), plate: g("vP"), vin: g("vV"), notes: g("vN") };
+    if (veh) await sb.from("vehicles").update(row).eq("id", veh.id); else await sb.from("vehicles").insert(row);
+    close(); await loadExtras(); if (currentId) renderDetail();
+  };
+}
+
+function openSearch() {
+  const wrap = document.createElement("div"); wrap.className = "searchov";
+  wrap.innerHTML = `<div class="searchov__bar"><input id="gsInput" placeholder="Search clients, bookings…"><button class="btn btn--ghost btn--xs" id="gsClose">Cancel</button></div><div class="searchov__res" id="gsRes"></div>`;
+  document.body.appendChild(wrap);
+  const inp = wrap.querySelector("#gsInput"), res = wrap.querySelector("#gsRes");
+  const close = () => wrap.remove(); wrap.querySelector("#gsClose").onclick = close;
+  inp.addEventListener("input", () => {
+    const q = inp.value.trim().toLowerCase(); if (!q) { res.innerHTML = ""; return; }
+    const cl = clients.filter((c) => [c.name, c.phone, c.email, c.vehicle].some((x) => (x || "").toLowerCase().includes(q))).slice(0, 8);
+    const bk = bookings.filter((b) => [b.attendee_name, b.attendee_phone, b.service, b.tier].some((x) => (x || "").toLowerCase().includes(q))).slice(0, 8);
+    res.innerHTML = (cl.length ? `<div class="gs-sec">Clients</div>` + cl.map((c) => `<div class="gs-row" data-c="${c.id}"><b>${esc(c.name)}</b><span>${esc(c.vehicle || c.phone || "")}</span></div>`).join("") : "") + (bk.length ? `<div class="gs-sec">Bookings</div>` + bk.map((b) => `<div class="gs-row" data-b="${b.id}"><b>${esc(b.attendee_name || "—")}</b><span>${esc(svcLabel(b))} · ${esc(bkWhen(b))}</span></div>`).join("") : "") || `<div class="gs-empty">No matches</div>`;
+    res.querySelectorAll("[data-c]").forEach((r) => r.onclick = () => { close(); navTo("clients"); openDetail(r.dataset.c); });
+    res.querySelectorAll("[data-b]").forEach((r) => r.onclick = () => { close(); const b = bookings.find((x) => x.id === r.dataset.b); if (b) openBookingSheet(b); });
+  });
+  setTimeout(() => inp.focus(), 60);
+}
+
+async function makeInvoice(job, client, booking) {
+  const W = 1080, H = 1500, cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#0e1116"; ctx.fillRect(0, 0, W, H);
+  const accent = (getComputedStyle(document.documentElement).getPropertyValue("--blue-1") || "#2b8bff").trim();
+  const F = (s, w) => `${w || ""} ${s}px 'Segoe UI',system-ui,sans-serif`;
+  try { const logo = await loadImg("assets/logo.png"); ctx.drawImage(logo, 60, 56, 108, 108); } catch (e) {}
+  ctx.textAlign = "left"; ctx.fillStyle = "#fff"; ctx.font = F(50, "bold"); ctx.fillText("EURO DETAILING", 190, 116);
+  ctx.font = F(26); ctx.fillStyle = "#9aa6b4"; ctx.fillText("Newton, MA · 781-290-3040", 190, 156);
+  ctx.textAlign = "right"; ctx.fillStyle = accent; ctx.font = F(40, "bold"); ctx.fillText("INVOICE", W - 60, 108);
+  ctx.fillStyle = "#9aa6b4"; ctx.font = F(24); ctx.fillText(new Date(job?.finished_at || booking?.scheduled_at || Date.now()).toLocaleDateString(), W - 60, 150);
+  ctx.textAlign = "left"; ctx.fillStyle = "#9aa6b4"; ctx.font = F(22); ctx.fillText("BILL TO", 60, 280);
+  ctx.fillStyle = "#fff"; ctx.font = F(34, "bold"); ctx.fillText(client?.name || booking?.attendee_name || "Customer", 60, 324);
+  if (client?.phone || booking?.attendee_phone) { ctx.fillStyle = "#9aa6b4"; ctx.font = F(24); ctx.fillText(client?.phone || booking?.attendee_phone, 60, 360); }
+  let y = 470; ctx.strokeStyle = "#2a2f4a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(60, y - 44); ctx.lineTo(W - 60, y - 44); ctx.stroke();
+  const svc = booking ? svcLabel(booking) : (job ? "Detail service" : "Detail");
+  const amt = (job?.charge_amount) ?? (booking?.price) ?? 0;
+  ctx.fillStyle = "#fff"; ctx.font = F(30, "bold"); ctx.fillText(svc, 60, y);
+  ctx.textAlign = "right"; ctx.fillText(money(amt), W - 60, y); ctx.textAlign = "left";
+  if (job?.duration_seconds) { ctx.fillStyle = "#9aa6b4"; ctx.font = F(22); ctx.fillText(`${Math.round(job.duration_seconds / 60)} min`, 60, y + 32); }
+  y += 130; ctx.strokeStyle = accent; ctx.beginPath(); ctx.moveTo(60, y - 44); ctx.lineTo(W - 60, y - 44); ctx.stroke();
+  ctx.fillStyle = "#fff"; ctx.font = F(38, "bold"); ctx.fillText("TOTAL", 60, y);
+  ctx.textAlign = "right"; ctx.fillStyle = accent; ctx.font = F(50, "bold"); ctx.fillText(money(amt), W - 60, y); ctx.textAlign = "left";
+  ctx.fillStyle = "#9aa6b4"; ctx.font = F(23); ctx.fillText("Thank you! Payments: Cash · Venmo · Zelle · Cash App · Check", 60, y + 64);
+  const bf = job?.before_photos?.[0], af = job?.after_photos?.[0];
+  if (bf || af) {
+    const iy = y + 130, ih = 420, iw = (W - 140) / 2;
+    const cover = (img, dx) => { const ar = img.width / img.height, tar = iw / ih; let sw, sh, sx, sy; if (ar > tar) { sh = img.height; sw = sh * tar; sx = (img.width - sw) / 2; sy = 0; } else { sw = img.width; sh = sw / tar; sx = 0; sy = (img.height - sh) / 2; } ctx.drawImage(img, sx, sy, sw, sh, dx, iy, iw, ih); };
+    try { if (bf) cover(await loadImg(bf), 60); } catch (e) {}
+    try { if (af) cover(await loadImg(af), 80 + iw); } catch (e) {}
+  }
+  return cv.toDataURL("image/jpeg", 0.92);
+}
+async function shareInvoice(job, client, booking) { const url = await makeInvoice(job, client, booking); await shareTemplate(url, (client?.name || "invoice") + "-invoice"); }
+
+/* ----- Week calendar view ----- */
+let weekOffset = 0;
+function renderWeek() {
+  bkEmpty.hidden = true;
+  const now = new Date(), base = new Date(now);
+  base.setDate(now.getDate() - now.getDay() + weekOffset * 7); base.setHours(0, 0, 0, 0);
+  const days = []; for (let i = 0; i < 7; i++) { const d = new Date(base); d.setDate(base.getDate() + i); days.push(d); }
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const label = `${base.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${days[6].toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  const todayStr = new Date().toDateString();
+  bkList.innerHTML = `<div class="wknav"><button class="btn btn--ghost btn--xs" id="wkPrev">←</button><span>${weekOffset === 0 ? "This week" : label}</span><button class="btn btn--ghost btn--xs" id="wkNext">→</button></div>` +
+    days.map((d, i) => {
+      const ds = d.toDateString();
+      const dayBk = bookings.filter((b) => b.scheduled_at && new Date(b.scheduled_at).toDateString() === ds && b.status !== "cancelled" && b.status !== "rejected").sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+      return `<div class="wkday${ds === todayStr ? " is-today" : ""}"><div class="wkday__h">${dayNames[i]} ${d.getDate()}</div>${dayBk.length ? dayBk.map((b) => `<div class="wkbk" data-open="${b.id}"><span class="wkbk__t">${new Date(b.scheduled_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span> <b>${esc(b.attendee_name || "—")}</b> · <span class="wkbk__s">${esc(svcLabel(b))}</span></div>`).join("") : `<div class="wkday__empty">—</div>`}</div>`;
+    }).join("");
+  document.getElementById("wkPrev").onclick = () => { weekOffset--; renderWeek(); };
+  document.getElementById("wkNext").onclick = () => { weekOffset++; renderWeek(); };
+}
+document.getElementById("searchBtn")?.addEventListener("click", openSearch);
