@@ -486,3 +486,20 @@ h4{color:var(--muted)}
 .wkbk__t{color:var(--muted);font-variant-numeric:tabular-nums}
 .wkbk__s{color:var(--chrome-2);text-transform:capitalize}
 .wkday__empty{color:var(--muted);font-size:.78rem;padding:.2rem 0}
+
+/* ===== v13: Spotify FAB + overlap/polish fixes ===== */
+.sd__music{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:55;width:52px;height:52px;border-radius:50%;border:none;background:linear-gradient(135deg,#1db954,#159c44);color:#fff;font-size:1.4rem;cursor:pointer;box-shadow:0 8px 24px -6px rgba(29,185,84,.6);display:grid;place-items:center}
+.sd__music:active{transform:scale(.92)}
+/* keep the top-bar brand clear of the search + lock buttons on phone */
+.sidebar__brand{padding-right:6.5rem}
+/* payment collect: stack the method full-width on narrow screens */
+.paycollect{grid-template-columns:1fr 1fr}
+.paycollect .fld:last-child{grid-column:1 / -1}
+/* before/after action buttons wrap nicely */
+.ba .btn--xs{margin-top:.45rem;margin-right:.4rem}
+/* booking card tap area shouldn't look flat against buttons */
+.bkcard__btns{margin-top:.7rem}
+@media (min-width:900px){
+  .sidebar__brand{padding-right:.5rem}
+  .sidebar__search{position:static;width:100%;text-align:center;margin-bottom:.4rem;font-size:.9rem;padding:.5rem}
+}

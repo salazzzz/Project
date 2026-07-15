@@ -382,16 +382,19 @@ function updateActiveStep() {
   if (over && !st.overNotified) { st.overNotified = true; if (navigator.vibrate) navigator.vibrate([120, 60, 120]); }
 }
 
+function openSpotify() { const url = (appSettings && appSettings.spotify) || "https://open.spotify.com"; try { window.open(url, "_blank"); } catch (e) { window.location.href = url; } }
 function openStartDetail(b) {
   sd = { booking: b, sop: sopFor(b.service), startTs: Date.now(), before: [], damage: [], after: [], checks: new Set(), stepStates: null, step: "before", timer: null };
   sdEl.classList.add("is-open"); sdEl.setAttribute("aria-hidden", "false"); renderSD();
+  const mb = document.getElementById("sdMusic"); if (mb) { mb.hidden = false; mb.onclick = openSpotify; }
   sd.timer = setInterval(() => { const t = document.getElementById("sdTimer"); if (t) t.textContent = elapsedStr(); updateActiveStep(); }, 1000);
 }
-function closeStartDetail() { if (sd && sd.timer) clearInterval(sd.timer); sd = null; sdEl.classList.remove("is-open"); sdEl.setAttribute("aria-hidden", "true"); }
+function closeStartDetail() { if (sd && sd.timer) clearInterval(sd.timer); sd = null; sdEl.classList.remove("is-open"); sdEl.setAttribute("aria-hidden", "true"); const mb = document.getElementById("sdMusic"); if (mb) mb.hidden = true; }
 function photoGrid(arr, kind) { return `<div class="photogrid">${arr.map((p) => `<img src="${p}" alt="">`).join("")}<label class="photoadd2">+<input type="file" accept="image/*" capture="environment" multiple hidden data-shot="${kind}"></label></div>`; }
 
 function renderSD() {
   const b = sd.booking;
+  const _mb = document.getElementById("sdMusic"); if (_mb) _mb.hidden = (sd.step === "done");
   if (sd.step === "before") {
     sdInner.innerHTML = `
       <div class="sd__top"><button class="sd__close" id="sdClose">✕ Cancel</button><div class="sd__timer" id="sdTimer">${elapsedStr()}</div></div>
@@ -512,6 +515,7 @@ function renderSettings() {
       <p class="set-hint" style="margin-top:0">Accent color — recolors buttons, the timer, and highlights.</p>
       <div class="swatches">${THEME_PRESETS.map((t) => `<button class="swatch${appSettings.theme && appSettings.theme.a === t.a ? " is-sel" : ""}" data-theme="${t.a}|${t.b}" style="background:linear-gradient(135deg,${t.a},${t.b})" title="${t.name}"></button>`).join("")}</div>
       <label class="fld" style="margin-top:.8rem"><span>Custom color</span><input type="color" id="customColor" class="colorpick" value="${(appSettings.theme && appSettings.theme.a) || "#2b8bff"}"></label>
+      <label class="fld" style="margin-top:.8rem"><span>🎵 Spotify playlist (music button while detailing)</span><input id="spotifyUrl" value="${esc(appSettings.spotify || "")}" placeholder="https://open.spotify.com/playlist/..."></label>
     </div></details>
     <details class="acc"><summary>Messages</summary><div class="acc__body">
       <label class="fld"><span>“On my way” text</span><textarea id="msgOnWay">${esc(m.on_my_way || "")}</textarea></label>
@@ -529,6 +533,7 @@ function renderSettings() {
   settingsBody.querySelectorAll("[data-theme]").forEach((b) => b.onclick = async () => { const [a, bb] = b.dataset.theme.split("|"); await saveTheme({ a, b: bb }); renderSettings(); });
   const _cc = document.getElementById("customColor");
   if (_cc) { _cc.addEventListener("input", (e) => applyTheme({ a: e.target.value, b: darken(e.target.value) })); _cc.addEventListener("change", (e) => saveTheme({ a: e.target.value, b: darken(e.target.value) })); }
+  document.getElementById("spotifyUrl")?.addEventListener("change", async (e) => { appSettings.spotify = e.target.value.trim(); await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); });
   document.getElementById("saveMsgs").onclick = async () => { appSettings.messages = { on_my_way: document.getElementById("msgOnWay").value, wrapping_up: document.getElementById("msgWrap").value }; await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); flash("savedMsgs"); };
   document.getElementById("saveRev").onclick = async () => { appSettings.review = { message: document.getElementById("revMsg").value, link: document.getElementById("revLink").value }; await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); flash("savedRev"); };
   document.getElementById("savePrices").onclick = async () => { await Promise.all(services.map((s) => { const pe = settingsBody.querySelector(`[data-price="${s.id}"]`), ee = settingsBody.querySelector(`[data-est="${s.id}"]`); return pe ? sb.from("services").update({ price: Number(pe.value), est_minutes: Number(ee.value) }).eq("id", s.id) : null; }).filter(Boolean)); await loadExtras(); flash("savedPrices"); };

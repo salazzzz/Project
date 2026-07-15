@@ -1,5 +1,5 @@
 // Euro Detailing — service worker (offline app shell)
-const CACHE = "euro-detailing-v12";
+const CACHE = "euro-detailing-v13";
 const SHELL = [
   "./",
   "./index.html",
