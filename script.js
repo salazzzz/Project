@@ -381,29 +381,35 @@ function syncSopDOM() {
     let so = sops.find((x) => x.service === svc); if (so) so.steps = steps; else sops.push({ service: svc, tier: "all", steps });
   });
 }
+function openAcc(svc) { const el = [...settingsBody.querySelectorAll("details.acc")].find((d) => d.querySelector(`[data-sop="${svc}"]`)); if (el) el.open = true; }
 function renderSettings() {
   const m = appSettings.messages || {};
-  const byService = {};
-  services.slice().sort((a, b) => (a.tier).localeCompare(b.tier) || (a.size).localeCompare(b.size)).forEach((s) => { (byService[s.service] = byService[s.service] || []).push(s); });
-  const priceRows = ["interior", "exterior", "bundle"].filter((k) => byService[k]).map((svc) => `<div class="price-grp">${cap(svc)}</div>` + byService[svc].map((s) => `<div class="price-row"><span>${cap(s.tier)} · ${s.size.toUpperCase()}</span><input type="number" data-price="${s.id}" value="${s.price}"><input type="number" data-est="${s.id}" value="${s.est_minutes}" title="minutes"></div>`).join("")).join("");
-  const sopBlocks = ["interior", "exterior", "bundle"].map((svc) => {
+  const sizes = ["sedan", "suv", "xl"], tiers = ["basic", "premium", "maintenance"];
+  const priceCard = (svc) => {
+    const body = tiers.map((tier) => `<tr><th>${cap(tier)}</th>${sizes.map((size) => { const s = services.find((x) => x.service === svc && x.tier === tier && x.size === size); return s ? `<td><input type="number" class="pcell" data-price="${s.id}" value="${s.price}"><input type="number" class="pmin" data-est="${s.id}" value="${s.est_minutes}"></td>` : "<td></td>"; }).join("")}</tr>`).join("");
+    return `<details class="acc"><summary>${cap(svc)}</summary><div class="acc__body"><div class="pmatrix-wrap"><table class="pmatrix"><thead><tr><th></th><th>Sedan</th><th>SUV</th><th>XL</th></tr></thead><tbody>${body}</tbody></table></div><p class="set-hint">Big = price $ · small = est. minutes</p></div></details>`;
+  };
+  const sopCard = (svc) => {
     const so = sops.find((x) => x.service === svc); const steps = so ? so.steps : [];
-    return `<div class="price-grp">${cap(svc)} SOP</div><div data-sop="${svc}">${steps.map((st, i) => `<div class="sopedit-step"><input type="text" value="${esc(st.label)}"><input type="number" value="${st.minutes || 0}"><button data-del="${svc}:${i}">×</button></div>`).join("")}</div><button class="btn btn--ghost btn--xs" data-addstep="${svc}">+ Add step</button>`;
-  }).join("");
+    const rows = steps.map((st, i) => `<div class="sopedit-step"><span class="sop-num">${i + 1}</span><input type="text" value="${esc(st.label)}"><input type="number" value="${st.minutes || 0}"><button class="sop-mv" data-up="${svc}:${i}">↑</button><button class="sop-mv" data-down="${svc}:${i}">↓</button><button data-del="${svc}:${i}">✕</button></div>`).join("");
+    return `<details class="acc"><summary>${cap(svc)} <span class="acc__count">${steps.length} steps</span></summary><div class="acc__body" data-sop="${svc}">${rows}<button class="btn btn--ghost btn--xs" data-addstep="${svc}">+ Add step</button></div></details>`;
+  };
   settingsBody.innerHTML = `
-    <div class="set-sec"><h3>Messages</h3>
+    <details class="acc" open><summary>Messages</summary><div class="acc__body">
       <label class="fld"><span>“On my way” text</span><textarea id="msgOnWay">${esc(m.on_my_way || "")}</textarea></label>
       <label class="fld" style="margin-top:.6rem"><span>“Wrapping up” text</span><textarea id="msgWrap">${esc(m.wrapping_up || "")}</textarea></label>
       <p class="set-hint">Tip: type {name} to auto-insert the customer's first name.</p>
-      <button class="btn btn--primary btn--xs" id="saveMsgs" style="margin-top:.6rem">Save messages</button><span class="saved" id="savedMsgs" hidden>Saved ✓</span></div>
-    <div class="set-sec"><h3>Prices &amp; times</h3><div class="set-hint">Price ($) and estimated minutes per package.</div>${priceRows}<button class="btn btn--primary btn--xs" id="savePrices" style="margin-top:.7rem">Save prices</button><span class="saved" id="savedPrices" hidden>Saved ✓</span></div>
-    <div class="set-sec"><h3>SOP checklists</h3>${sopBlocks}<div style="margin-top:.7rem"><button class="btn btn--primary btn--xs" id="saveSops">Save SOPs</button><span class="saved" id="savedSops" hidden>Saved ✓</span></div></div>
-    <div class="set-sec"><h3>Account</h3><button class="btn btn--ghost btn--xs" id="signOut">Sign out</button></div>`;
+      <button class="btn btn--primary btn--xs" id="saveMsgs">Save messages</button><span class="saved" id="savedMsgs" hidden>Saved ✓</span></div></details>
+    <div class="set-group"><div class="set-group__t">Prices &amp; times</div>${["interior", "exterior", "bundle"].map(priceCard).join("")}<button class="btn btn--primary btn--xs" id="savePrices">Save all prices</button><span class="saved" id="savedPrices" hidden>Saved ✓</span></div>
+    <div class="set-group"><div class="set-group__t">SOP checklists</div>${["interior", "exterior", "bundle"].map(sopCard).join("")}<button class="btn btn--primary btn--xs" id="saveSops">Save all SOPs</button><span class="saved" id="savedSops" hidden>Saved ✓</span></div>
+    <details class="acc"><summary>Account</summary><div class="acc__body"><button class="btn btn--ghost btn--xs" id="signOut">Sign out</button></div></details>`;
   document.getElementById("saveMsgs").onclick = async () => { appSettings.messages = { on_my_way: document.getElementById("msgOnWay").value, wrapping_up: document.getElementById("msgWrap").value }; await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); flash("savedMsgs"); };
-  document.getElementById("savePrices").onclick = async () => { await Promise.all(services.map((s) => sb.from("services").update({ price: Number(settingsBody.querySelector(`[data-price="${s.id}"]`).value), est_minutes: Number(settingsBody.querySelector(`[data-est="${s.id}"]`).value) }).eq("id", s.id))); await loadExtras(); flash("savedPrices"); };
+  document.getElementById("savePrices").onclick = async () => { await Promise.all(services.map((s) => { const pe = settingsBody.querySelector(`[data-price="${s.id}"]`), ee = settingsBody.querySelector(`[data-est="${s.id}"]`); return pe ? sb.from("services").update({ price: Number(pe.value), est_minutes: Number(ee.value) }).eq("id", s.id) : null; }).filter(Boolean)); await loadExtras(); flash("savedPrices"); };
   document.getElementById("saveSops").onclick = async () => { syncSopDOM(); for (const so of sops) { if (so.id) await sb.from("sops").update({ steps: so.steps }).eq("id", so.id); else await sb.from("sops").insert({ service: so.service, tier: "all", steps: so.steps }); } await loadExtras(); renderSettings(); flash("savedSops"); };
-  settingsBody.querySelectorAll("[data-addstep]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const svc = btn.dataset.addstep; let so = sops.find((x) => x.service === svc); if (so) so.steps.push({ label: "New step", minutes: 5 }); else sops.push({ service: svc, tier: "all", steps: [{ label: "New step", minutes: 5 }] }); renderSettings(); });
-  settingsBody.querySelectorAll("[data-del]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const [svc, i] = btn.dataset.del.split(":"); const so = sops.find((x) => x.service === svc); if (so) { so.steps.splice(+i, 1); renderSettings(); } });
+  settingsBody.querySelectorAll("[data-addstep]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const svc = btn.dataset.addstep; let so = sops.find((x) => x.service === svc); if (so) so.steps.push({ label: "New step", minutes: 5 }); else sops.push({ service: svc, tier: "all", steps: [{ label: "New step", minutes: 5 }] }); renderSettings(); openAcc(svc); });
+  settingsBody.querySelectorAll("[data-del]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const [svc, i] = btn.dataset.del.split(":"); const so = sops.find((x) => x.service === svc); if (so) { so.steps.splice(+i, 1); renderSettings(); openAcc(svc); } });
+  settingsBody.querySelectorAll("[data-up]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const [svc, i] = btn.dataset.up.split(":"); const so = sops.find((x) => x.service === svc); const j = +i; if (so && j > 0) { [so.steps[j - 1], so.steps[j]] = [so.steps[j], so.steps[j - 1]]; renderSettings(); openAcc(svc); } });
+  settingsBody.querySelectorAll("[data-down]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const [svc, i] = btn.dataset.down.split(":"); const so = sops.find((x) => x.service === svc); const j = +i; if (so && j < so.steps.length - 1) { [so.steps[j + 1], so.steps[j]] = [so.steps[j], so.steps[j + 1]]; renderSettings(); openAcc(svc); } });
   document.getElementById("signOut").onclick = async () => { await sb.auth.signOut(); location.reload(); };
 }
 function flash(id) { const el = document.getElementById(id); if (el) { el.hidden = false; setTimeout(() => (el.hidden = true), 1500); } }
