@@ -62,14 +62,16 @@ async function upsertBooking(b: any) {
   const map = mapService(b.title || "");
   const { price, est } = await priceLookup(map.service, map.tier, map.size);
   // Reuse the client of an already-synced booking so re-runs never duplicate clients.
-  const existing = await rest(`bookings?cal_uid=eq.${encodeURIComponent(b.uid)}&select=client_id`);
-  const client_id = (existing && existing[0]?.client_id) || await findOrCreateClient(name, phone, email, vehicle);
+  const existing = await rest(`bookings?cal_uid=eq.${encodeURIComponent(b.uid)}&select=client_id,status`);
+  const ex0 = existing && existing[0];
+  const client_id = (ex0?.client_id) || await findOrCreateClient(name, phone, email, vehicle);
+  const keepStatus = ex0 && (ex0.status === "done" || ex0.status === "cancelled");
   const row = {
     owner: OWNER, client_id, source: "cal.com", cal_uid: b.uid,
     attendee_name: name, attendee_phone: phone, attendee_email: email,
     title: b.title, service: map.service, tier: map.tier, size: map.size,
     est_minutes: est, price, scheduled_at: b.start, ends_at: b.end,
-    status: b.status, cal_status: b.status, notes: bf.notes || null,
+    status: keepStatus ? ex0.status : b.status, cal_status: b.status, notes: bf.notes || null,
   };
   await rest(`bookings?on_conflict=cal_uid`, {
     method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },

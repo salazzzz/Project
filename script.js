@@ -88,7 +88,7 @@ function unsubscribeRealtime(){ if(channel){ sb.removeChannel(channel); channel=
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money=n=>"$"+(Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:0});
 function fmtDate(d){ if(!d)return"—"; const dt=new Date(d+(String(d).length<=10?"T00:00:00":"")); return isNaN(dt)?d:dt.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
-const total=c=>(c.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+const total=c=>(c.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0)+(Number(p.tip)||0),0);
 function lastPay(c){ const ps=(c.payments||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")); return ps[0]||null; }
 function lastSeenOf(c){ const lp=lastPay(c); return c.lastSeen || (lp&&lp.date) || null; }
 const initials=n=>(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
@@ -131,7 +131,7 @@ function renderDetail(){
   const c=clients.find(x=>x.id===currentId); if(!c){ closeDetail(); return; }
   const lp=lastPay(c);
   const photos=(c.photos&&c.photos.length)?c.photos.map((p,i)=>`<img src="${p}" alt="photo ${i+1}">`).join(""):`<span class="nophoto">No photos yet.</span>`;
-  const pays=(c.payments&&c.payments.length)?c.payments.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p=>{const i=c.payments.indexOf(p);return `<div class="pay" data-pi="${i}"><span>${fmtDate(p.date)}</span><span class="pay__r"><b>${money(p.amount)}</b><button class="pay__b" data-payedit="${i}">✎</button><button class="pay__b pay__del" data-paydel="${i}">✕</button></span></div>`;}).join(""):`<div class="pay"><span style="color:var(--muted)">No payments logged.</span></div>`;
+  const pays=(c.payments&&c.payments.length)?c.payments.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p=>{const i=c.payments.indexOf(p);const amt=(Number(p.amount)||0)+(Number(p.tip)||0);return `<div class="pay" data-pi="${i}"><span>${fmtDate(p.date)}${p.method?` · ${esc(p.method)}`:""}${p.tip?` · +${money(p.tip)} tip`:""}</span><span class="pay__r"><b>${money(amt)}</b><button class="pay__b" data-payedit="${i}">✎</button><button class="pay__b pay__del" data-paydel="${i}">✕</button></span></div>`;}).join(""):`<div class="pay"><span style="color:var(--muted)">No payments logged.</span></div>`;
   const row=(l,v)=>v?`<div class="drow"><span class="drow__l">${l}</span><span class="drow__v">${esc(v)}</span></div>`:"";
   detailBody.innerHTML=`
     <div class="detail__top"><button class="detail__back" id="detailBack">← Back</button><div class="detail__title">${esc(c.name)}</div></div>
@@ -147,7 +147,7 @@ function renderDetail(){
       ${(!c.phone&&!c.email&&!c.vehicle&&!c.location)?'<div class="drow"><span class="drow__l">No contact info yet</span></div>':""}</div>
     <div class="dsec"><div class="dsec__h"><h4>Photos</h4></div><div class="photos">${photos}</div></div>
     <div class="dsec"><div class="dsec__h"><h4>Payments</h4></div>${pays}
-      <div class="payadd"><input type="number" id="payAmt" placeholder="Amount" min="0" /><input type="date" id="payDate" value="${new Date().toISOString().slice(0,10)}" /><button class="btn btn--primary btn--xs" id="payAdd">Add</button></div></div>
+      <div class="payadd"><input type="number" id="payAmt" placeholder="Amount" min="0" /><input type="number" id="payTip" placeholder="Tip" min="0" /><select id="payMethod" class="paysel">${["Cash","Venmo","Zelle","Cash App","Check","Card"].map(x=>`<option>${x}</option>`).join("")}</select><input type="date" id="payDate" value="${new Date().toISOString().slice(0,10)}" /><button class="btn btn--primary btn--xs" id="payAdd">Add</button></div></div>
     <div class="dsec"><div class="dsec__h"><h4>Notes</h4></div><textarea class="noteedit" id="noteEdit" placeholder="Add notes about this client…">${esc(c.notes||"")}</textarea></div>
     ${typeof clientHistoryHTML==="function"?clientHistoryHTML(c):""}
     <div class="detail__actions"><button class="btn btn--ghost btn--xs" id="detailEdit">Edit</button><button class="btn btn--danger btn--xs" id="detailDelete">Delete</button></div>`;
@@ -174,9 +174,11 @@ function renderDetail(){
   }));
   detailBody.querySelector("#payAdd").addEventListener("click", async ()=>{
     const amt=parseFloat(detailBody.querySelector("#payAmt").value);
+    const tip=parseFloat(detailBody.querySelector("#payTip").value)||0;
+    const method=detailBody.querySelector("#payMethod").value;
     const date=detailBody.querySelector("#payDate").value || new Date().toISOString().slice(0,10);
     if(!amt||amt<=0) return;
-    const payments=(c.payments||[]).concat([{amount:amt,date}]);
+    const payments=(c.payments||[]).concat([{amount:amt,tip,method,date}]);
     await dbPatch(c.id,{ payments, last_seen:date }); await refresh();
   });
   detailBody.querySelectorAll("[data-paydel]").forEach(b=>b.addEventListener("click", async ()=>{
@@ -271,18 +273,19 @@ function renderDashboard(){
 function render(){ renderDashboard(); renderCards(); }
 
 /* =================== Bookings / Start Detail / Settings =================== */
-let bookings = [], services = [], sops = [], appSettings = {}, jobs = [], ownerId = null;
+let bookings = [], services = [], sops = [], appSettings = {}, jobs = [], expenses = [], ownerId = null;
 
 async function loadExtras() {
   const u = await sb.auth.getUser(); ownerId = u.data.user?.id || null;
-  const [bk, sv, so, st, jb] = await Promise.all([
+  const [bk, sv, so, st, jb, ex] = await Promise.all([
     sb.from("bookings").select("*").order("scheduled_at", { ascending: true }),
     sb.from("services").select("*"),
     sb.from("sops").select("*"),
     sb.from("settings").select("data").maybeSingle(),
     sb.from("jobs").select("*").order("finished_at", { ascending: false }),
+    sb.from("expenses").select("*").order("spent_at", { ascending: false }),
   ]);
-  bookings = bk.data || []; services = sv.data || []; sops = so.data || []; appSettings = (st.data && st.data.data) || {}; jobs = jb.data || [];
+  bookings = bk.data || []; services = sv.data || []; sops = so.data || []; appSettings = (st.data && st.data.data) || {}; jobs = jb.data || []; expenses = ex.data || [];
 }
 
 async function syncCal(btn) {
@@ -317,17 +320,21 @@ function renderBookings() {
     const s = (b.status || "").toLowerCase();
     const cls = s === "accepted" ? "accepted" : s === "pending" ? "pending" : (s === "cancelled" || s === "rejected") ? "cancelled" : "done";
     return `<article class="bkcard">
-      <div class="bkcard__top"><div><div class="bkcard__name">${esc(b.attendee_name || "—")}<span class="bkcard__badge badge-${cls}">${esc(s)}</span></div><div class="bkcard__svc">${esc(svcLabel(b))}</div></div>${b.price ? `<div class="bkcard__price">${money(b.price)}</div>` : ""}</div>
-      <div class="bkcard__when">📅 ${esc(bkWhen(b))}${b.est_minutes ? ` · ⏱ ${b.est_minutes}m` : ""}</div>
-      ${b.attendee_phone ? `<div class="bkcard__phone">📞 ${esc(b.attendee_phone)}</div>` : ""}
+      <div class="bkcard__tap" data-open="${b.id}">
+        <div class="bkcard__top"><div><div class="bkcard__name">${esc(b.attendee_name || "—")}<span class="bkcard__badge badge-${cls}">${esc(s)}</span></div><div class="bkcard__svc">${esc(svcLabel(b))}</div></div>${b.price ? `<div class="bkcard__price">${money(b.price)}</div>` : ""}</div>
+        <div class="bkcard__when">📅 ${esc(bkWhen(b))}${b.est_minutes ? ` · ⏱ ${b.est_minutes}m` : ""}</div>
+        ${b.attendee_phone ? `<div class="bkcard__phone">📞 ${esc(b.attendee_phone)}</div>` : ""}
+      </div>
       <div class="bkcard__btns"><button class="btn btn--ghost btn--xs" data-msg="${b.id}">💬 On my way</button><button class="btn btn--primary btn--xs" data-start="${b.id}">Start detail →</button></div>
     </article>`;
   }).join("");
 }
 bkList.addEventListener("click", (e) => {
   const m = e.target.dataset.msg, s = e.target.dataset.start;
-  if (m) { const b = bookings.find((x) => x.id === m); if (b) messageCustomer(b, appSettings.messages?.on_my_way); }
-  if (s) { const b = bookings.find((x) => x.id === s); if (b) openStartDetail(b); }
+  if (m) { const b = bookings.find((x) => x.id === m); if (b) messageCustomer(b, appSettings.messages?.on_my_way); return; }
+  if (s) { const b = bookings.find((x) => x.id === s); if (b) openStartDetail(b); return; }
+  const openId = e.target.closest("[data-open]")?.dataset.open;
+  if (openId) { const b = bookings.find((x) => x.id === openId); if (b) openBookingSheet(b); }
 });
 
 function messageCustomer(b, template) {
@@ -428,12 +435,20 @@ function renderSD() {
         <div class="finishrow"><span>Actual</span><b>${mins} min</b></div>
         ${est ? `<div class="finishrow"><span>vs estimate</span><b class="${diff > 0 ? "over" : "under"}">${diff > 0 ? "+" : ""}${diff} min</b></div>` : ""}
       </div>
-      <h4 style="margin-top:1.4rem">Charge customer</h4><div class="charge">${money(charge)}</div>
-      ${(sd.before[0] && sd.after[0]) ? `<button class="btn btn--ghost" id="sdStory" style="margin-top:.9rem">📸 Make before/after story</button>` : ""}
-      <div class="sd__bar"><button class="btn btn--ghost" id="sdCloseDone">Close</button><button class="btn btn--primary" id="sdPaid">Mark paid</button></div></div>`;
+      <h4 style="margin-top:1.4rem">Collect payment</h4>
+      <div class="paycollect">
+        <label class="fld"><span>Amount</span><input type="number" id="fcAmt" value="${charge}" min="0"></label>
+        <label class="fld"><span>Tip</span><input type="number" id="fcTip" placeholder="0" min="0"></label>
+        <label class="fld"><span>Method</span><select id="fcMethod">${["Cash", "Venmo", "Zelle", "Cash App", "Check", "Card"].map((x) => `<option>${x}</option>`).join("")}</select></label>
+      </div>
+      <button class="btn btn--primary" id="sdPaid" style="margin-top:.8rem">Mark paid &amp; finish</button>
+      ${(sd.before[0] && sd.after[0]) ? `<button class="btn btn--ghost" id="sdStory" style="margin-top:.6rem">📸 Make before/after story</button>` : ""}
+      <button class="btn btn--ghost" id="sdReview" style="margin-top:.6rem">⭐ Request a review</button>
+      <button class="btn btn--ghost" id="sdCloseDone" style="margin-top:.6rem">Finish without payment</button></div>`;
     document.getElementById("sdStory")?.addEventListener("click", async (e) => { const btn = e.target; btn.textContent = "Building…"; try { const url = await makeBeforeAfter(sd.before[0], sd.after[0], { sub: b.attendee_name || "" }); await shareTemplate(url, b.attendee_name); } catch (er) {} btn.textContent = "📸 Make before/after story"; });
-    document.getElementById("sdCloseDone").onclick = async () => { await saveJob(false); closeStartDetail(); };
-    document.getElementById("sdPaid").onclick = async () => { await saveJob(true); closeStartDetail(); };
+    document.getElementById("sdReview")?.addEventListener("click", () => requestReview(b));
+    document.getElementById("sdCloseDone").onclick = async () => { await saveJob(null); closeStartDetail(); };
+    document.getElementById("sdPaid").onclick = async () => { await saveJob({ amount: parseFloat(document.getElementById("fcAmt").value) || 0, tip: parseFloat(document.getElementById("fcTip").value) || 0, method: document.getElementById("fcMethod").value }); closeStartDetail(); };
   }
 }
 sdEl.addEventListener("change", async (e) => {
@@ -441,14 +456,16 @@ sdEl.addEventListener("change", async (e) => {
   for (const f of e.target.files) { sd[kind].push(await fileToDataURL(f)); }
   renderSD();
 });
-async function saveJob(markPaid) {
-  const b = sd.booking, mins = Math.round((sd.endTs - sd.startTs) / 60000);
-  await sb.from("jobs").insert({ booking_id: b.id, client_id: b.client_id, started_at: new Date(sd.startTs).toISOString(), finished_at: new Date(sd.endTs).toISOString(), duration_seconds: Math.round((sd.endTs - sd.startTs) / 1000), est_minutes: b.est_minutes, before_photos: sd.before, after_photos: sd.after, damage_photos: sd.damage, checklist: { done: [...sd.checks] }, charge_amount: b.price || null, status: "done" });
+async function saveJob(payment) {
+  const b = sd.booking;
+  const charge = payment ? (Number(payment.amount) || 0) + (Number(payment.tip) || 0) : (b.price || null);
+  await sb.from("jobs").insert({ booking_id: b.id, client_id: b.client_id, started_at: new Date(sd.startTs).toISOString(), finished_at: new Date(sd.endTs).toISOString(), duration_seconds: Math.round((sd.endTs - sd.startTs) / 1000), est_minutes: b.est_minutes, before_photos: sd.before, after_photos: sd.after, damage_photos: sd.damage, checklist: { done: [...sd.checks] }, charge_amount: charge, status: "done" });
   await sb.from("bookings").update({ status: "done" }).eq("id", b.id);
-  if (markPaid && b.client_id && b.price) {
+  if (payment && b.client_id && (payment.amount || payment.tip)) {
     const c = clients.find((x) => x.id === b.client_id);
-    const payments = ((c && c.payments) || []).concat([{ amount: b.price, date: new Date().toISOString().slice(0, 10) }]);
-    await sb.from("clients").update({ payments, last_seen: new Date().toISOString().slice(0, 10) }).eq("id", b.client_id);
+    const today = new Date().toISOString().slice(0, 10);
+    const payments = ((c && c.payments) || []).concat([{ amount: Number(payment.amount) || 0, tip: Number(payment.tip) || 0, method: payment.method || "Cash", date: today }]);
+    await sb.from("clients").update({ payments, last_seen: today }).eq("id", b.client_id);
   }
   await loadExtras(); await loadAll(); render(); renderBookings();
 }
@@ -486,6 +503,11 @@ function renderSettings() {
       <label class="fld" style="margin-top:.6rem"><span>“Wrapping up” text</span><textarea id="msgWrap">${esc(m.wrapping_up || "")}</textarea></label>
       <p class="set-hint">Tip: type {name} to auto-insert the customer's first name.</p>
       <button class="btn btn--primary btn--xs" id="saveMsgs">Save messages</button><span class="saved" id="savedMsgs" hidden>Saved ✓</span></div></details>
+    <details class="acc"><summary>Review request</summary><div class="acc__body">
+      <label class="fld"><span>Review message</span><textarea id="revMsg">${esc((appSettings.review && appSettings.review.message) || "Thanks for choosing Euro Detailing! 🚗✨ We'd really appreciate a quick review: {link}")}</textarea></label>
+      <label class="fld" style="margin-top:.6rem"><span>Review link (Google, etc.)</span><input id="revLink" value="${esc((appSettings.review && appSettings.review.link) || "")}" placeholder="https://g.page/your-business"></label>
+      <p class="set-hint">{link} inserts your link · {name} the customer's first name.</p>
+      <button class="btn btn--primary btn--xs" id="saveRev">Save</button><span class="saved" id="savedRev" hidden>Saved ✓</span></div></details>
     <div class="set-group"><div class="set-group__t">Prices &amp; times</div>${["interior", "exterior", "bundle"].map(priceCard).join("")}<button class="btn btn--primary btn--xs" id="savePrices">Save all prices</button><span class="saved" id="savedPrices" hidden>Saved ✓</span></div>
     <div class="set-group"><div class="set-group__t">SOP checklists</div>${["interior", "exterior", "bundle"].map(sopCard).join("")}<button class="btn btn--primary btn--xs" id="saveSops">Save all SOPs</button><span class="saved" id="savedSops" hidden>Saved ✓</span></div>
     <details class="acc"><summary>Account</summary><div class="acc__body"><button class="btn btn--ghost btn--xs" id="signOut">Sign out</button></div></details>`;
@@ -493,6 +515,7 @@ function renderSettings() {
   const _cc = document.getElementById("customColor");
   if (_cc) { _cc.addEventListener("input", (e) => applyTheme({ a: e.target.value, b: darken(e.target.value) })); _cc.addEventListener("change", (e) => saveTheme({ a: e.target.value, b: darken(e.target.value) })); }
   document.getElementById("saveMsgs").onclick = async () => { appSettings.messages = { on_my_way: document.getElementById("msgOnWay").value, wrapping_up: document.getElementById("msgWrap").value }; await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); flash("savedMsgs"); };
+  document.getElementById("saveRev").onclick = async () => { appSettings.review = { message: document.getElementById("revMsg").value, link: document.getElementById("revLink").value }; await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); flash("savedRev"); };
   document.getElementById("savePrices").onclick = async () => { await Promise.all(services.map((s) => { const pe = settingsBody.querySelector(`[data-price="${s.id}"]`), ee = settingsBody.querySelector(`[data-est="${s.id}"]`); return pe ? sb.from("services").update({ price: Number(pe.value), est_minutes: Number(ee.value) }).eq("id", s.id) : null; }).filter(Boolean)); await loadExtras(); flash("savedPrices"); };
   document.getElementById("saveSops").onclick = async () => { syncSopDOM(); for (const so of sops) { if (so.id) await sb.from("sops").update({ steps: so.steps }).eq("id", so.id); else await sb.from("sops").insert({ service: so.service, tier: "all", steps: so.steps }); } await loadExtras(); renderSettings(); flash("savedSops"); };
   settingsBody.querySelectorAll("[data-addstep]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const svc = btn.dataset.addstep; let so = sops.find((x) => x.service === svc); if (so) so.steps.push({ label: "New step", minutes: 5 }); else sops.push({ service: svc, tier: "all", steps: [{ label: "New step", minutes: 5 }] }); renderSettings(); openAcc(svc); });
@@ -516,8 +539,12 @@ function barChart(items) {
 function renderAnalytics() {
   const el = document.getElementById("analyticsBody"); if (!el) return;
   const now = new Date();
-  const pays = clients.flatMap((c) => (c.payments || []).map((p) => ({ amount: Number(p.amount) || 0, date: p.date || "" })));
+  const pays = clients.flatMap((c) => (c.payments || []).map((p) => ({ amount: (Number(p.amount) || 0) + (Number(p.tip) || 0), date: p.date || "" })));
   const sum = (a) => a.reduce((s, p) => s + p.amount, 0);
+  const exp = expenses || [];
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const expTotal = exp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const revAll = sum(pays), profit = revAll - expTotal;
   const weeks = [];
   for (let w = 7; w >= 0; w--) {
     const start = new Date(now); start.setDate(now.getDate() - now.getDay() - w * 7); start.setHours(0, 0, 0, 0);
@@ -545,7 +572,15 @@ function renderAnalytics() {
       <div class="anl-card"><div class="anl-card__v">${repeat}%</div><div class="anl-card__l">Repeat clients</div></div>
       <div class="anl-card"><div class="anl-card__v">${Math.round(avgActual) || 0}m</div><div class="anl-card__l">Avg job${avgEst ? ` (est ${Math.round(avgEst)}m)` : ""}</div></div>
       <div class="anl-card"><div class="anl-card__v">${busiest}</div><div class="anl-card__l">Busiest day</div></div>
+    </div>
+    <div class="dash__sec-t">Profit</div>
+    <div class="dstats"><div class="dstat"><span class="dstat__l">Revenue</span><span class="dstat__v good">${money(revAll)}</span></div><div class="dstat"><span class="dstat__l">Expenses</span><span class="dstat__v" style="color:var(--danger)">${money(expTotal)}</span></div><div class="dstat"><span class="dstat__l">Profit</span><span class="dstat__v ${profit >= 0 ? "good" : ""}" ${profit < 0 ? 'style="color:var(--danger)"' : ""}>${money(profit)}</span></div></div>
+    <div class="panel" style="margin-top:1rem"><h3>Expenses</h3>
+      <div class="expadd"><input type="number" id="expAmt" placeholder="Amount" min="0"><input type="text" id="expCat" placeholder="What for? (supplies, gas…)"><button class="btn btn--primary btn--xs" id="expAdd">Add</button></div>
+      <div class="explist">${exp.length ? exp.slice(0, 12).map((e) => `<div class="recent__row"><b>${esc(e.category || "Expense")}</b><span><span style="color:var(--danger)">${money(e.amount)}</span> <button class="pay__b pay__del" data-exp="${e.id}">✕</button></span></div>`).join("") : `<div class="recent__row">No expenses logged.</div>`}</div>
     </div>`;
+  el.querySelector("#expAdd")?.addEventListener("click", async () => { const a = parseFloat(el.querySelector("#expAmt").value); if (!a || a <= 0) return; await addExpense(a, el.querySelector("#expCat").value.trim()); });
+  el.querySelectorAll("[data-exp]").forEach((b) => b.addEventListener("click", () => delExpense(b.dataset.exp)));
 }
 
 function clientHistoryHTML(c) {
@@ -641,4 +676,58 @@ async function shareTemplate(dataURL, name) {
     if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Euro Detailing" }); return; }
   } catch (e) {}
   const a = document.createElement("a"); a.href = dataURL; a.download = "euro-detailing-before-after.jpg"; a.click();
+}
+
+/* =================== Booking sheet, expenses, reviews =================== */
+function opts2(arr, cur) { return arr.map((o) => `<option value="${o}" ${o === cur ? "selected" : ""}>${cap(o)}</option>`).join(""); }
+function openBookingSheet(b) {
+  const wrap = document.createElement("div"); wrap.className = "modal is-open";
+  const dt = b.scheduled_at ? new Date(b.scheduled_at) : null;
+  const dval = dt ? dt.toISOString().slice(0, 10) : "";
+  const tval = dt ? `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}` : "";
+  wrap.innerHTML = `<div class="modal__backdrop" data-x></div><form class="modal__card">
+    <h3>Booking details</h3>
+    <div class="grid2">
+      <label class="fld"><span>Name</span><input id="bsName" value="${esc(b.attendee_name || "")}"></label>
+      <label class="fld"><span>Phone</span><input id="bsPhone" value="${esc(b.attendee_phone || "")}"></label>
+      <label class="fld"><span>Service</span><select id="bsService">${opts2(["interior", "exterior", "bundle"], b.service || "interior")}</select></label>
+      <label class="fld"><span>Tier</span><select id="bsTier">${opts2(["basic", "premium", "maintenance"], b.tier || "basic")}</select></label>
+      <label class="fld"><span>Size</span><select id="bsSize">${opts2(["sedan", "suv", "xl"], b.size || "sedan")}</select></label>
+      <label class="fld"><span>Status</span><select id="bsStatus">${opts2(["upcoming", "accepted", "pending", "done", "cancelled"], b.status || "upcoming")}</select></label>
+      <label class="fld"><span>Date</span><input id="bsDate" type="date" value="${dval}"></label>
+      <label class="fld"><span>Time</span><input id="bsTime" type="time" value="${tval}"></label>
+    </div>
+    <div class="bk-price" id="bsPrice">—</div>
+    <div class="sheet-actions"><button type="button" class="btn btn--primary btn--xs" id="bsStart">▶ Start detail</button><button type="button" class="btn btn--ghost btn--xs" id="bsMsg">💬 Message</button></div>
+    <div class="modal__actions"><button type="button" class="btn btn--danger btn--xs" id="bsDelete">Delete</button><button type="button" class="btn btn--ghost btn--xs" data-x>Close</button><button type="submit" class="btn btn--primary btn--xs">Save</button></div>
+  </form>`;
+  document.body.appendChild(wrap);
+  const close = () => wrap.remove();
+  wrap.querySelectorAll("[data-x]").forEach((el) => el.onclick = close);
+  const upd = () => { const s = priceFor(wrap.querySelector("#bsService").value, wrap.querySelector("#bsTier").value, wrap.querySelector("#bsSize").value); wrap.querySelector("#bsPrice").textContent = s.price ? `${money(s.price)} · est. ${s.est_minutes}m` : "—"; };
+  ["#bsService", "#bsTier", "#bsSize"].forEach((sel) => wrap.querySelector(sel).addEventListener("change", upd)); upd();
+  wrap.querySelector("#bsStart").onclick = () => { close(); openStartDetail(b); };
+  wrap.querySelector("#bsMsg").onclick = () => messageCustomer(b, appSettings.messages?.on_my_way);
+  wrap.querySelector("#bsDelete").onclick = async () => { if (confirm("Delete this booking? It won't re-sync from Cal.")) { if (b.cal_uid) await sb.from("suppressed").upsert([{ owner: ownerId, cal_uid: b.cal_uid }], { onConflict: "owner,cal_uid" }); await sb.from("bookings").delete().eq("id", b.id); close(); await loadExtras(); renderBookings(); render(); } };
+  wrap.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const svc = wrap.querySelector("#bsService").value, tier = wrap.querySelector("#bsTier").value, size = wrap.querySelector("#bsSize").value, pr = priceFor(svc, tier, size);
+    const d = wrap.querySelector("#bsDate").value, t = wrap.querySelector("#bsTime").value;
+    const when = d ? new Date(`${d}T${t || "09:00"}`).toISOString() : b.scheduled_at;
+    await sb.from("bookings").update({ attendee_name: wrap.querySelector("#bsName").value, attendee_phone: wrap.querySelector("#bsPhone").value, service: svc, tier, size, price: pr.price, est_minutes: pr.est_minutes, status: wrap.querySelector("#bsStatus").value, scheduled_at: when }).eq("id", b.id);
+    close(); await loadExtras(); renderBookings(); render();
+  };
+}
+
+async function addExpense(amount, category, date) { if (!amount) return; await sb.from("expenses").insert({ amount: Number(amount), category: category || null, spent_at: date || new Date().toISOString().slice(0, 10) }); await loadExtras(); renderAnalytics(); }
+async function delExpense(id) { await sb.from("expenses").delete().eq("id", id); await loadExtras(); renderAnalytics(); }
+
+function requestReview(b) {
+  const r = appSettings.review || {};
+  let msg = r.message || "Thanks for choosing Euro Detailing! 🚗✨ We'd really appreciate a quick review: {link}";
+  msg = msg.replace(/\{link\}/g, r.link || "").replace(/\{name\}/g, (b.attendee_name || b.name || "").split(" ")[0]);
+  try { navigator.clipboard && navigator.clipboard.writeText(msg); } catch (e) {}
+  const iOS = /iPhone|iPad|iPod|Mac/.test(navigator.userAgent);
+  const ph = (b.attendee_phone || b.phone || "").replace(/[^0-9+]/g, "");
+  window.location.href = `sms:${ph}${iOS ? "&" : "?"}body=${encodeURIComponent(msg)}`;
 }
