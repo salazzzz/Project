@@ -396,3 +396,33 @@ img{max-width:100%}
 .dash__next-svc{color:var(--muted);font-size:.85rem;margin-bottom:.7rem;text-transform:capitalize}
 .dash__next .bkcard__btns{display:flex;gap:.5rem}.dash__next .bkcard__btns .btn{flex:1}
 .dash__sec-t{font-size:.66rem;text-transform:uppercase;letter-spacing:.1em;color:var(--chrome-2);font-weight:700;margin:1.4rem 0 .6rem .2rem}
+
+/* ===== Analytics ===== */
+.nav__ico[data-i=chart]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M4 13h4v8H4zM10 3h4v18h-4zM16 9h4v12h-4z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M4 13h4v8H4zM10 3h4v18h-4zM16 9h4v12h-4z'/%3E%3C/svg%3E")}
+.bars{display:flex;align-items:flex-end;gap:.3rem;height:130px;margin-top:.5rem}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;min-width:0}
+.bar__col{width:100%;flex:1;display:flex;align-items:flex-end;justify-content:center}
+.bar__fill{width:70%;max-width:26px;background:linear-gradient(180deg,var(--blue-1),var(--blue-2));border-radius:5px 5px 0 0;min-height:3px;transition:height .5s var(--ease)}
+.bar__v{font-size:.6rem;color:var(--chrome-2);font-variant-numeric:tabular-nums;margin-bottom:.2rem;white-space:nowrap}
+.bar__x{font-size:.6rem;color:var(--muted);margin-top:.3rem;white-space:nowrap}
+.anl-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:1rem}
+.anl-card{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:1rem;text-align:center}
+.anl-card__v{font-size:1.7rem;font-weight:800;background:linear-gradient(120deg,var(--chrome-1),var(--blue-1));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.anl-card__l{color:var(--muted);font-size:.75rem;margin-top:.2rem}
+
+/* ===== Client history + before/after ===== */
+.histlist{display:flex;flex-direction:column;gap:.4rem}
+.hist-row{display:flex;align-items:center;gap:.6rem;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.5rem .7rem;font-size:.8rem}
+.hist-when{color:var(--muted);white-space:nowrap;flex:none}
+.hist-svc{flex:1;text-transform:capitalize;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ba{margin-bottom:.8rem}
+.ba__pair{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.ba__f{position:relative}
+.ba__f img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid var(--border)}
+.ba__f figcaption{position:absolute;bottom:.4rem;left:.4rem;background:rgba(0,0,0,.6);color:#fff;font-size:.66rem;padding:.1rem .4rem;border-radius:5px}
+.ba__date{color:var(--muted);font-size:.72rem;margin-top:.35rem;text-align:center}
+
+/* ===== Selects + new-booking ===== */
+.fld select{background:var(--card-2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:.55rem .6rem;font-size:.86rem;font-family:inherit;appearance:none;-webkit-appearance:none}
+.fld select:focus{outline:none;border-color:var(--blue-1)}
+.bk-price{background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem;font-size:.86rem;color:var(--good);font-weight:700;text-align:center}

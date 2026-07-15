@@ -43,9 +43,10 @@
     <aside class="sidebar">
       <div class="sidebar__brand"><img src="assets/logo.png" alt="" class="sidebar__logo" /><span>Euro Detailing</span></div>
       <nav class="nav">
-        <button class="nav__item is-active" data-view="dashboard"><span class="nav__ico" data-i="dash"></span><span class="nav__lbl">Dashboard</span></button>
+        <button class="nav__item is-active" data-view="dashboard"><span class="nav__ico" data-i="dash"></span><span class="nav__lbl">Home</span></button>
         <button class="nav__item" data-view="bookings"><span class="nav__ico" data-i="book"></span><span class="nav__lbl">Bookings</span></button>
         <button class="nav__item" data-view="clients"><span class="nav__ico" data-i="clients"></span><span class="nav__lbl">Clients</span></button>
+        <button class="nav__item" data-view="analytics"><span class="nav__ico" data-i="chart"></span><span class="nav__lbl">Stats</span></button>
         <button class="nav__item" data-view="settings"><span class="nav__ico" data-i="gear"></span><span class="nav__lbl">Settings</span></button>
       </nav>
       <button class="sidebar__lock" id="lockBtn">Lock</button>
@@ -80,7 +81,7 @@
       <section class="view" id="view-bookings">
         <header class="head head--row">
           <h2>Bookings</h2>
-          <button class="btn btn--ghost btn--xs" id="syncBtn">↻ Sync</button>
+          <div style="display:flex;gap:.5rem"><button class="btn btn--ghost btn--xs" id="syncBtn">↻</button><button class="btn btn--primary btn--xs" id="addBkBtn">+ Add</button></div>
         </header>
         <div class="seg" id="bkSeg">
           <button class="seg__b is-active" data-seg="upcoming">Upcoming</button>
@@ -90,12 +91,37 @@
         <div class="empty" id="bkEmpty" hidden>No bookings here yet.</div>
       </section>
 
+      <!-- Analytics -->
+      <section class="view" id="view-analytics">
+        <div id="analyticsBody"></div>
+      </section>
+
       <!-- Settings -->
       <section class="view" id="view-settings">
         <header class="head"><h2>Settings</h2></header>
         <div id="settingsBody"></div>
       </section>
     </main>
+  </div>
+
+  <!-- New booking modal -->
+  <div class="modal" id="bkModal" aria-hidden="true">
+    <div class="modal__backdrop" data-bkclose></div>
+    <form class="modal__card" id="bkForm">
+      <h3>New booking</h3>
+      <div class="grid2">
+        <label class="fld"><span>Name *</span><input id="bkName" required /></label>
+        <label class="fld"><span>Phone</span><input id="bkPhone" inputmode="tel" /></label>
+        <label class="fld"><span>Service</span><select id="bkService"><option value="interior">Interior</option><option value="exterior">Exterior</option><option value="bundle">Bundle</option></select></label>
+        <label class="fld"><span>Tier</span><select id="bkTier"><option value="basic">Basic</option><option value="premium">Premium</option><option value="maintenance">Maintenance</option></select></label>
+        <label class="fld"><span>Size</span><select id="bkSize"><option value="sedan">Sedan</option><option value="suv">SUV</option><option value="xl">XL</option></select></label>
+        <label class="fld"><span>Vehicle</span><input id="bkVehicle" placeholder="2021 BMW M4" /></label>
+        <label class="fld"><span>Date</span><input id="bkDate" type="date" /></label>
+        <label class="fld"><span>Time</span><input id="bkTime" type="time" /></label>
+      </div>
+      <div class="bk-price" id="bkPrice">Price: —</div>
+      <div class="modal__actions"><button type="button" class="btn btn--ghost btn--xs" data-bkclose>Cancel</button><button type="submit" class="btn btn--primary btn--xs">Create booking</button></div>
+    </form>
   </div>
 
   <!-- Start Detail (full-screen flow) -->

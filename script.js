@@ -149,6 +149,7 @@ function renderDetail(){
     <div class="dsec"><div class="dsec__h"><h4>Payments</h4></div>${pays}
       <div class="payadd"><input type="number" id="payAmt" placeholder="Amount" min="0" /><input type="date" id="payDate" value="${new Date().toISOString().slice(0,10)}" /><button class="btn btn--primary btn--xs" id="payAdd">Add</button></div></div>
     <div class="dsec"><div class="dsec__h"><h4>Notes</h4></div><textarea class="noteedit" id="noteEdit" placeholder="Add notes about this client…">${esc(c.notes||"")}</textarea></div>
+    ${typeof clientHistoryHTML==="function"?clientHistoryHTML(c):""}
     <div class="detail__actions"><button class="btn btn--ghost btn--xs" id="detailEdit">Edit</button><button class="btn btn--danger btn--xs" id="detailDelete">Delete</button></div>`;
 
   detailBody.querySelector("#detailBack").addEventListener("click", closeDetail);
@@ -490,3 +491,82 @@ function flash(id) { const el = document.getElementById(id); if (el) { el.hidden
 let bkChannel = null;
 function subscribeBookings() { if (bkChannel) return; bkChannel = sb.channel("bk-rt").on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, async () => { await loadExtras(); renderBookings(); render(); }).subscribe(); }
 document.querySelectorAll(".nav__item").forEach((btn) => btn.addEventListener("click", () => { const v = btn.dataset.view; if (v === "bookings") renderBookings(); if (v === "settings") renderSettings(); }));
+
+/* =================== Analytics, history, manual bookings =================== */
+function barChart(items) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  return `<div class="bars">${items.map((it) => `<div class="bar"><div class="bar__v">${it.value ? "$" + Math.round(it.value) : ""}</div><div class="bar__col"><div class="bar__fill" style="height:${it.value ? Math.max(4, it.value / max * 100) : 0}%"></div></div><div class="bar__x">${esc(it.label)}</div></div>`).join("")}</div>`;
+}
+function renderAnalytics() {
+  const el = document.getElementById("analyticsBody"); if (!el) return;
+  const now = new Date();
+  const pays = clients.flatMap((c) => (c.payments || []).map((p) => ({ amount: Number(p.amount) || 0, date: p.date || "" })));
+  const sum = (a) => a.reduce((s, p) => s + p.amount, 0);
+  const weeks = [];
+  for (let w = 7; w >= 0; w--) {
+    const start = new Date(now); start.setDate(now.getDate() - now.getDay() - w * 7); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    weeks.push({ label: w === 0 ? "Now" : `${start.getMonth() + 1}/${start.getDate()}`, value: sum(pays.filter((p) => { const d = new Date(p.date); return d >= start && d < end; })) });
+  }
+  const top = clients.map((c) => ({ name: c.name, total: total(c) })).filter((c) => c.total > 0).sort((a, b) => b.total - a.total).slice(0, 5);
+  const js = jobs || [];
+  const avgActual = js.length ? js.reduce((s, j) => s + (j.duration_seconds || 0), 0) / js.length / 60 : 0;
+  const withEst = js.filter((j) => j.est_minutes);
+  const avgEst = withEst.length ? withEst.reduce((s, j) => s + j.est_minutes, 0) / withEst.length : 0;
+  const onTime = withEst.length ? Math.round(withEst.filter((j) => (j.duration_seconds / 60) <= j.est_minutes).length / withEst.length * 100) : 0;
+  const repeat = clients.length ? Math.round(clients.filter((c) => (c.payments || []).length >= 2).length / clients.length * 100) : 0;
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], dayCounts = [0, 0, 0, 0, 0, 0, 0];
+  bookings.forEach((b) => { if (b.scheduled_at) dayCounts[new Date(b.scheduled_at).getDay()]++; });
+  const busiest = Math.max(...dayCounts) > 0 ? dayNames[dayCounts.indexOf(Math.max(...dayCounts))] : "—";
+  const weekRev = sum(pays.filter((p) => new Date(p.date) >= new Date(Date.now() - 7 * 864e5)));
+  el.innerHTML = `
+    <header class="head"><h2>Stats</h2></header>
+    <div class="dstats" style="margin-bottom:1.1rem"><div class="dstat"><span class="dstat__l">This week</span><span class="dstat__v good">${money(weekRev)}</span></div><div class="dstat"><span class="dstat__l">Details</span><span class="dstat__v">${js.length}</span></div><div class="dstat"><span class="dstat__l">All-time</span><span class="dstat__v good">${money(sum(pays))}</span></div></div>
+    <div class="panel"><h3>Revenue — last 8 weeks</h3>${barChart(weeks)}</div>
+    <div class="panel" style="margin-top:1rem"><h3>Top clients</h3>${top.length ? top.map((c, i) => `<div class="recent__row"><b>${i + 1}. ${esc(c.name)}</b><span class="good" style="font-weight:700">${money(c.total)}</span></div>`).join("") : `<div class="recent__row">No payments yet.</div>`}</div>
+    <div class="anl-grid">
+      <div class="anl-card"><div class="anl-card__v">${onTime}%</div><div class="anl-card__l">On-time rate</div></div>
+      <div class="anl-card"><div class="anl-card__v">${repeat}%</div><div class="anl-card__l">Repeat clients</div></div>
+      <div class="anl-card"><div class="anl-card__v">${Math.round(avgActual) || 0}m</div><div class="anl-card__l">Avg job${avgEst ? ` (est ${Math.round(avgEst)}m)` : ""}</div></div>
+      <div class="anl-card"><div class="anl-card__v">${busiest}</div><div class="anl-card__l">Busiest day</div></div>
+    </div>`;
+}
+
+function clientHistoryHTML(c) {
+  const cb = (bookings || []).filter((x) => x.client_id === c.id).sort((a, b) => new Date(b.scheduled_at || 0) - new Date(a.scheduled_at || 0));
+  const cj = (jobs || []).filter((x) => x.client_id === c.id);
+  let html = "";
+  if (cb.length) {
+    html += `<div class="dsec"><div class="dsec__h"><h4>Booking history</h4></div><div class="histlist">${cb.map((bk) => { const s = (bk.status || "").toLowerCase(); const cls = s === "done" ? "done" : (s === "cancelled" || s === "rejected") ? "cancelled" : s === "pending" ? "pending" : "accepted"; return `<div class="hist-row"><span class="hist-when">${esc(bkWhen(bk) || "—")}</span><span class="hist-svc">${esc(svcLabel(bk))}</span><span class="bkcard__badge badge-${cls}">${esc(s)}</span></div>`; }).join("")}</div></div>`;
+  }
+  const ba = cj.filter((j) => (j.before_photos && j.before_photos.length) || (j.after_photos && j.after_photos.length));
+  if (ba.length) {
+    html += `<div class="dsec"><div class="dsec__h"><h4>Before / after</h4></div>${ba.map((j) => { const bf = (j.before_photos || [])[0], af = (j.after_photos || [])[0]; return `<div class="ba"><div class="ba__pair">${bf ? `<figure class="ba__f"><img src="${bf}" alt=""><figcaption>Before</figcaption></figure>` : ""}${af ? `<figure class="ba__f"><img src="${af}" alt=""><figcaption>After</figcaption></figure>` : ""}</div>${j.finished_at ? `<div class="ba__date">${new Date(j.finished_at).toLocaleDateString()} · ${Math.round((j.duration_seconds || 0) / 60)}m · ${money(j.charge_amount || 0)}</div>` : ""}</div>`; }).join("")}</div>`;
+  }
+  return html;
+}
+
+/* ----- Manual booking ----- */
+const bkModal = document.getElementById("bkModal"), bkForm = document.getElementById("bkForm");
+const bkName = document.getElementById("bkName"), bkPhone = document.getElementById("bkPhone"), bkService = document.getElementById("bkService"),
+  bkTier = document.getElementById("bkTier"), bkSize = document.getElementById("bkSize"), bkVehicle = document.getElementById("bkVehicle"),
+  bkDate = document.getElementById("bkDate"), bkTime = document.getElementById("bkTime"), bkPriceEl = document.getElementById("bkPrice");
+function priceFor(service, tier, size) { return services.find((x) => x.service === service && x.tier === tier && x.size === size) || { price: null, est_minutes: null }; }
+function updateBkPrice() { const s = priceFor(bkService.value, bkTier.value, bkSize.value); bkPriceEl.textContent = s.price ? `Price: ${money(s.price)} · est. ${s.est_minutes}m` : "Price: —"; }
+[bkService, bkTier, bkSize].forEach((el) => el.addEventListener("change", updateBkPrice));
+document.getElementById("addBkBtn").addEventListener("click", () => { bkForm.reset(); bkDate.value = new Date().toISOString().slice(0, 10); bkTime.value = "09:00"; updateBkPrice(); bkModal.classList.add("is-open"); setTimeout(() => bkName.focus(), 50); });
+bkModal.querySelectorAll("[data-bkclose]").forEach((el) => el.onclick = () => bkModal.classList.remove("is-open"));
+bkForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = bkName.value.trim(); if (!name) return;
+  const svc = bkService.value, tier = bkTier.value, size = bkSize.value, pr = priceFor(svc, tier, size);
+  const when = bkDate.value ? new Date(`${bkDate.value}T${bkTime.value || "09:00"}`).toISOString() : null;
+  let client_id = null; const ph = (bkPhone.value || "").replace(/[^0-9]/g, "");
+  if (ph.length >= 7) { const c = clients.find((x) => (x.phone || "").replace(/[^0-9]/g, "").slice(-10) === ph.slice(-10)); if (c) client_id = c.id; }
+  if (!client_id) { const { data } = await sb.from("clients").insert({ name, phone: bkPhone.value || null, vehicle: bkVehicle.value || null }).select("id").single(); client_id = data ? data.id : null; }
+  await sb.from("bookings").insert({ client_id, source: "manual", attendee_name: name, attendee_phone: bkPhone.value || null, service: svc, tier, size, price: pr.price, est_minutes: pr.est_minutes, scheduled_at: when, status: "upcoming", title: `${cap(svc)} ${tier}` });
+  bkModal.classList.remove("is-open"); await loadExtras(); await loadAll(); render(); renderBookings();
+});
+
+/* analytics nav hook */
+document.querySelectorAll(".nav__item").forEach((btn) => btn.addEventListener("click", () => { if (btn.dataset.view === "analytics") renderAnalytics(); }));
