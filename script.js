@@ -224,28 +224,58 @@ clientForm.addEventListener("submit", async e=>{
 });
 
 /* ---------- Dashboard ---------- */
+function bkMiniCard(b){
+  return `<article class="bkcard"><div class="bkcard__top"><div><div class="bkcard__name">${esc(b.attendee_name||"—")}</div><div class="bkcard__svc">${esc(svcLabel(b))}</div></div>${b.price?`<div class="bkcard__price">${money(b.price)}</div>`:""}</div><div class="bkcard__when">📅 ${esc(bkWhen(b))}</div><div class="bkcard__btns"><button class="btn btn--ghost btn--xs" data-msg="${b.id}">💬 On my way</button><button class="btn btn--primary btn--xs" data-start="${b.id}">Start →</button></div></article>`;
+}
 function renderDashboard(){
-  document.getElementById("statClients").textContent=clients.length;
-  document.getElementById("statVehicles").textContent=clients.filter(c=>c.vehicle).length;
-  document.getElementById("statRevenue").textContent=money(clients.reduce((s,c)=>s+total(c),0));
-  const recent=document.getElementById("recent");
-  recent.innerHTML=clients.length?clients.slice(0,5).map(c=>`<div class="recent__row"><b>${esc(c.name)}</b><span>${esc(c.vehicle||"—")}</span></div>`).join(""):`<div class="recent__row">No clients yet.</div>`;
+  const el=document.getElementById("dashBody"); if(!el) return;
+  const now=new Date(), hr=now.getHours();
+  const greet=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
+  const today=now.toISOString().slice(0,10);
+  const weekAgo=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
+  const monthStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
+  const pays=clients.flatMap(c=>(c.payments||[]).map(p=>({amount:Number(p.amount)||0,date:p.date||""})));
+  const sum=a=>a.reduce((s,p)=>s+p.amount,0);
+  const weekRev=sum(pays.filter(p=>p.date>=weekAgo)), monthRev=sum(pays.filter(p=>p.date>=monthStart)), totalRev=sum(pays);
+  const sameDay=d=>d&&new Date(d).toISOString().slice(0,10)===today;
+  const todays=bookings.filter(b=>sameDay(b.scheduled_at)&&b.status!=="cancelled"&&b.status!=="rejected").sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
+  const upcoming=bookings.filter(b=>b.scheduled_at&&new Date(b.scheduled_at)>=now&&b.status!=="cancelled"&&b.status!=="rejected"&&b.status!=="done").sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));
+  const next=upcoming[0];
+  const recentJobs=(jobs||[]).slice(0,5);
+  el.innerHTML=`
+    <div class="dash__hi"><div><div class="dash__greet">${greet}, Eric 👋</div><div class="dash__date">${now.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"})}</div></div><button class="btn btn--ghost btn--xs" id="dashSync">↻ Sync</button></div>
+    <div class="dstats dash__stats">
+      <div class="dstat"><span class="dstat__l">Today</span><span class="dstat__v">${todays.length}<span class="dstat__u">jobs</span></span></div>
+      <div class="dstat"><span class="dstat__l">This week</span><span class="dstat__v good">${money(weekRev)}</span></div>
+      <div class="dstat"><span class="dstat__l">This month</span><span class="dstat__v good">${money(monthRev)}</span></div>
+    </div>
+    ${next?`<div class="dash__next"><div class="dash__next-l">Up next</div><div class="dash__next-name">${esc(next.attendee_name||"—")}</div><div class="dash__next-svc">${esc(svcLabel(next))} · ${esc(bkWhen(next))}${next.price?` · ${money(next.price)}`:""}</div><div class="bkcard__btns"><button class="btn btn--ghost btn--xs" data-msg="${next.id}">💬 On my way</button><button class="btn btn--primary btn--xs" data-start="${next.id}">Start detail →</button></div></div>`:""}
+    <div class="dash__sec-t">Today's schedule</div>
+    ${todays.length?`<div class="bklist">${todays.map(bkMiniCard).join("")}</div>`:`<div class="empty">Nothing booked today.</div>`}
+    <div class="dash__sec-t">Recent details</div>
+    ${recentJobs.length?`<div class="panel">${recentJobs.map(j=>{const c=clients.find(x=>x.id===j.client_id);const mins=Math.round((j.duration_seconds||0)/60);const when=j.finished_at?new Date(j.finished_at).toLocaleDateString(undefined,{month:"short",day:"numeric"}):"";return `<div class="recent__row"><b>${esc(c?c.name:"Client")}</b><span>${when} · ${mins}m · ${money(j.charge_amount||0)}</span></div>`;}).join("")}</div>`:`<div class="empty">No completed details yet — start one from Bookings.</div>`}
+    <div class="dash__sec-t">Overview</div>
+    <div class="dstats"><div class="dstat"><span class="dstat__l">Clients</span><span class="dstat__v">${clients.length}</span></div><div class="dstat"><span class="dstat__l">Details done</span><span class="dstat__v">${(jobs||[]).length}</span></div><div class="dstat"><span class="dstat__l">All-time</span><span class="dstat__v good">${money(totalRev)}</span></div></div>`;
+  el.querySelector("#dashSync")?.addEventListener("click",e=>syncCal(e.target));
+  el.querySelectorAll("[data-msg]").forEach(b=>b.addEventListener("click",()=>{const x=bookings.find(k=>k.id===b.dataset.msg);if(x)messageCustomer(x,appSettings.messages?.on_my_way);}));
+  el.querySelectorAll("[data-start]").forEach(b=>b.addEventListener("click",()=>{const x=bookings.find(k=>k.id===b.dataset.start);if(x)openStartDetail(x);}));
 }
 
 function render(){ renderDashboard(); renderCards(); }
 
 /* =================== Bookings / Start Detail / Settings =================== */
-let bookings = [], services = [], sops = [], appSettings = {}, ownerId = null;
+let bookings = [], services = [], sops = [], appSettings = {}, jobs = [], ownerId = null;
 
 async function loadExtras() {
   const u = await sb.auth.getUser(); ownerId = u.data.user?.id || null;
-  const [bk, sv, so, st] = await Promise.all([
+  const [bk, sv, so, st, jb] = await Promise.all([
     sb.from("bookings").select("*").order("scheduled_at", { ascending: true }),
     sb.from("services").select("*"),
     sb.from("sops").select("*"),
     sb.from("settings").select("data").maybeSingle(),
+    sb.from("jobs").select("*").order("finished_at", { ascending: false }),
   ]);
-  bookings = bk.data || []; services = sv.data || []; sops = so.data || []; appSettings = (st.data && st.data.data) || {};
+  bookings = bk.data || []; services = sv.data || []; sops = so.data || []; appSettings = (st.data && st.data.data) || {}; jobs = jb.data || [];
 }
 
 async function syncCal(btn) {
@@ -309,16 +339,20 @@ function sopFor(service) { const s = sops.find((x) => x.service === service) || 
 function elapsedStr() { if (!sd) return "0:00"; const s = Math.floor((Date.now() - sd.startTs) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
 function activeStepIndex() { return sd && sd.stepStates ? sd.stepStates.findIndex((s) => s.status === "active") : -1; }
 function fmtMS(sec) { sec = Math.max(0, Math.floor(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; }
+const RING_C = 2 * Math.PI * 52; // circumference of the timer ring
 function updateActiveStep() {
   const el = document.getElementById("activeStep"); if (!el || !sd) return;
   const i = activeStepIndex(); if (i < 0) return;
   const st = sd.stepStates[i], target = +el.dataset.target || 0, elapsed = (Date.now() - st.startTs) / 1000;
-  const te = document.getElementById("stepTime"), fill = document.getElementById("stepFill");
-  if (te) te.textContent = fmtMS(elapsed) + (target ? ` / ${Math.round(target / 60)}m` : "");
-  const frac = target ? elapsed / target : 0;
-  if (fill) fill.style.width = Math.min(100, frac * 100) + "%";
-  const over = target && elapsed > target, warn = target && frac >= 0.8 && !over;
+  const te = document.getElementById("stepTime"), fg = document.getElementById("ringFg");
+  if (te) te.textContent = fmtMS(elapsed);
+  const frac = target ? Math.min(elapsed / target, 1) : 0;
+  if (fg) fg.style.strokeDashoffset = RING_C * (1 - frac);
+  const over = target && elapsed > target, warn = target && elapsed / target >= 0.8 && !over;
   el.classList.toggle("over", !!over); el.classList.toggle("warn", !!warn);
+  const tg = el.querySelector(".wheel__target");
+  if (tg && over) { tg.textContent = `${Math.floor((elapsed - target) / 60)}:${String(Math.floor((elapsed - target) % 60)).padStart(2, "0")} over`; tg.classList.add("over"); }
+  if (over && !st.overNotified) { st.overNotified = true; if (navigator.vibrate) navigator.vibrate([120, 60, 120]); }
 }
 
 function openStartDetail(b) {
@@ -343,22 +377,28 @@ function renderSD() {
   } else if (sd.step === "sop") {
     const steps = sd.sop.length ? sd.sop : [{ label: "Detail the vehicle", minutes: 60 }];
     if (!sd.stepStates) { sd.stepStates = steps.map(() => ({ status: "pending", startTs: null, actualSec: 0 })); sd.stepStates[0].status = "active"; sd.stepStates[0].startTs = Date.now(); }
-    const stepsHTML = steps.map((s, i) => {
+    const activeIdx = sd.stepStates.findIndex((s) => s.status === "active");
+    const activeStep = activeIdx >= 0 ? steps[activeIdx] : null;
+    const activeTarget = activeStep ? (activeStep.minutes || 0) * 60 : 0;
+    const wheelHTML = activeStep ? `
+      <div class="wheel" id="activeStep" data-target="${activeTarget}">
+        <svg viewBox="0 0 120 120" class="wheel__svg"><circle class="wheel__bg" cx="60" cy="60" r="52"></circle><circle class="wheel__fg" id="ringFg" cx="60" cy="60" r="52"></circle></svg>
+        <div class="wheel__c"><div class="wheel__task">${esc(activeStep.label)}</div><div class="wheel__time" id="stepTime">0:00</div><div class="wheel__target">${activeStep.minutes ? `target ${activeStep.minutes}m` : "no target"}</div></div>
+      </div>
+      <div class="wheel__meta"><span>Step ${activeIdx + 1} of ${steps.length}</span><button class="sopc__done" id="stepDone">Done ✓</button></div>`
+      : `<div class="wheel__alldone">✓ All steps done — hit Finish below.</div>`;
+    const listHTML = steps.map((s, i) => {
       const st = sd.stepStates[i], target = (s.minutes || 0) * 60;
-      if (st.status === "done") {
-        const over = target && st.actualSec > target;
-        return `<div class="sopc done"><div class="sopc__cb">✓</div><div class="sopc__main"><div class="sopc__l">${esc(s.label)}</div></div><div class="sopc__time ${over ? "over" : "good"}">${fmtMS(st.actualSec)}${s.minutes ? ` / ${s.minutes}m` : ""}</div></div>`;
-      }
-      if (st.status === "active") {
-        return `<div class="sopc active" id="activeStep" data-target="${target}"><div class="sopc__cb pulse"></div><div class="sopc__main"><div class="sopc__l">${esc(s.label)}</div><div class="sopc__bar"><div class="sopc__fill" id="stepFill"></div></div></div><div class="sopc__time" id="stepTime">0:00${s.minutes ? ` / ${s.minutes}m` : ""}</div><button class="sopc__done" id="stepDone">Done</button></div>`;
-      }
-      return `<div class="sopc pending"><div class="sopc__cb"></div><div class="sopc__main"><div class="sopc__l">${esc(s.label)}</div></div><div class="sopc__time">${s.minutes ? s.minutes + "m" : ""}</div></div>`;
+      const cls = st.status === "done" ? "done" : st.status === "active" ? "active" : "pending";
+      const cb = st.status === "done" ? "✓" : st.status === "active" ? "▶" : (i + 1);
+      const right = st.status === "done" ? `<span class="sopc__time ${target && st.actualSec > target ? "over" : "good"}">${fmtMS(st.actualSec)}</span>` : `<span class="sopc__time">${s.minutes ? s.minutes + "m" : ""}</span>`;
+      return `<div class="sopc mini ${cls}"><div class="sopc__cb">${cb}</div><div class="sopc__l">${esc(s.label)}</div>${right}</div>`;
     }).join("");
     sdInner.innerHTML = `
       <div class="sd__top"><button class="sd__close" id="sdBack">← Photos</button><div class="sd__timer" id="sdTimer">${elapsedStr()}</div></div>
-      <div class="sd__hero"><h3>${esc(svcLabel(b))}</h3><p>Follow the steps — beat the clock ⏱</p></div>
       <div class="reminder">📸 Grab photos & videos as you go — content for the 'gram!</div>
-      <div class="soplist">${stepsHTML}</div>
+      ${wheelHTML}
+      <div class="soplist">${listHTML}</div>
       <h4>After photos</h4>${photoGrid(sd.after, "after")}
       <div class="sd__bar"><button class="btn btn--ghost" id="sdMsg">💬 Wrapping up</button><button class="btn btn--primary" id="sdFinish">Finish ✓</button></div>`;
     document.getElementById("sdBack").onclick = () => { sd.step = "before"; renderSD(); };
