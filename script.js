@@ -22,7 +22,7 @@ const loginForm=document.getElementById("loginForm"), emailEl=document.getElemen
       loginErr=document.getElementById("loginError"), loginBtn=document.getElementById("loginBtn");
 
 function showLogin(){ app.classList.remove("app--visible"); login.classList.add("login--visible"); setTimeout(()=>emailEl.focus(),300); }
-async function showApp(){ login.classList.remove("login--visible"); app.classList.add("app--visible"); await loadAll(); render(); subscribeRealtime(); }
+async function showApp(){ login.classList.remove("login--visible"); app.classList.add("app--visible"); await loadAll(); await loadExtras(); render(); renderBookings(); subscribeRealtime(); subscribeBookings(); syncCal(); }
 
 loginForm.addEventListener("submit", async e=>{
   e.preventDefault();
@@ -211,3 +211,182 @@ function renderDashboard(){
 }
 
 function render(){ renderDashboard(); renderCards(); }
+
+/* =================== Bookings / Start Detail / Settings =================== */
+let bookings = [], services = [], sops = [], appSettings = {}, ownerId = null;
+
+async function loadExtras() {
+  const u = await sb.auth.getUser(); ownerId = u.data.user?.id || null;
+  const [bk, sv, so, st] = await Promise.all([
+    sb.from("bookings").select("*").order("scheduled_at", { ascending: true }),
+    sb.from("services").select("*"),
+    sb.from("sops").select("*"),
+    sb.from("settings").select("data").maybeSingle(),
+  ]);
+  bookings = bk.data || []; services = sv.data || []; sops = so.data || []; appSettings = (st.data && st.data.data) || {};
+}
+
+async function syncCal(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Syncing…"; }
+  try { await fetch(window.SUPABASE_URL + "/functions/v1/cal-sync", { headers: { Authorization: "Bearer " + window.SUPABASE_ANON_KEY } }); } catch (e) {}
+  await loadExtras(); await loadAll(); render(); renderBookings();
+  if (btn) { btn.disabled = false; btn.textContent = "↻ Sync"; }
+}
+
+const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+function svcLabel(b) { const p = [b.service, b.tier, b.size].filter(Boolean).map(cap); return p.length ? p.join(" · ") : (b.title || "Detail"); }
+function bkWhen(b) { return b.scheduled_at ? new Date(b.scheduled_at).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""; }
+const phoneClean = (s) => (s || "").replace(/[^0-9+]/g, "");
+
+let bkSeg = "upcoming";
+const bkList = document.getElementById("bkList"), bkEmpty = document.getElementById("bkEmpty");
+document.getElementById("bkSeg").addEventListener("click", (e) => {
+  const s = e.target.dataset.seg; if (!s) return; bkSeg = s;
+  document.querySelectorAll("#bkSeg .seg__b").forEach((b) => b.classList.toggle("is-active", b.dataset.seg === s));
+  renderBookings();
+});
+document.getElementById("syncBtn").addEventListener("click", (e) => syncCal(e.target));
+
+function renderBookings() {
+  const now = Date.now();
+  const isUp = (b) => b.scheduled_at && new Date(b.scheduled_at).getTime() >= now - 2 * 3600e3 && b.status !== "cancelled" && b.status !== "rejected";
+  const up = bookings.filter(isUp).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+  const past = bookings.filter((b) => !isUp(b)).sort((a, b) => new Date(b.scheduled_at || 0) - new Date(a.scheduled_at || 0));
+  const list = bkSeg === "upcoming" ? up : past;
+  bkEmpty.hidden = list.length !== 0;
+  bkList.innerHTML = list.map((b) => {
+    const s = (b.status || "").toLowerCase();
+    const cls = s === "accepted" ? "accepted" : s === "pending" ? "pending" : (s === "cancelled" || s === "rejected") ? "cancelled" : "done";
+    return `<article class="bkcard">
+      <div class="bkcard__top"><div><div class="bkcard__name">${esc(b.attendee_name || "—")}<span class="bkcard__badge badge-${cls}">${esc(s)}</span></div><div class="bkcard__svc">${esc(svcLabel(b))}</div></div>${b.price ? `<div class="bkcard__price">${money(b.price)}</div>` : ""}</div>
+      <div class="bkcard__when">📅 ${esc(bkWhen(b))}${b.est_minutes ? ` · ⏱ ${b.est_minutes}m` : ""}</div>
+      ${b.attendee_phone ? `<div class="bkcard__phone">📞 ${esc(b.attendee_phone)}</div>` : ""}
+      <div class="bkcard__btns"><button class="btn btn--ghost btn--xs" data-msg="${b.id}">💬 On my way</button><button class="btn btn--primary btn--xs" data-start="${b.id}">Start detail →</button></div>
+    </article>`;
+  }).join("");
+}
+bkList.addEventListener("click", (e) => {
+  const m = e.target.dataset.msg, s = e.target.dataset.start;
+  if (m) { const b = bookings.find((x) => x.id === m); if (b) messageCustomer(b, appSettings.messages?.on_my_way); }
+  if (s) { const b = bookings.find((x) => x.id === s); if (b) openStartDetail(b); }
+});
+
+function messageCustomer(b, template) {
+  const first = (b.attendee_name || "").split(" ")[0] || "";
+  const msg = (template || "On my way!").replace(/\{name\}/g, first);
+  try { navigator.clipboard && navigator.clipboard.writeText(msg); } catch (e) {}
+  const isiOS = /iPhone|iPad|iPod|Mac/.test(navigator.userAgent);
+  const ph = phoneClean(b.attendee_phone || "");
+  window.location.href = `sms:${ph}${isiOS ? "&" : "?"}body=${encodeURIComponent(msg)}`;
+}
+
+/* ----- Start Detail ----- */
+const sdEl = document.getElementById("sd"), sdInner = document.getElementById("sdInner");
+let sd = null;
+function sopFor(service) { const s = sops.find((x) => x.service === service) || sops.find((x) => x.service === "interior"); return s ? s.steps : []; }
+function elapsedStr() { if (!sd) return "0:00"; const s = Math.floor((Date.now() - sd.startTs) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+
+function openStartDetail(b) {
+  sd = { booking: b, sop: sopFor(b.service), startTs: Date.now(), before: [], damage: [], after: [], checks: new Set(), step: "before", timer: null };
+  sdEl.classList.add("is-open"); sdEl.setAttribute("aria-hidden", "false"); renderSD();
+  sd.timer = setInterval(() => { const t = document.getElementById("sdTimer"); if (t) t.textContent = elapsedStr(); }, 1000);
+}
+function closeStartDetail() { if (sd && sd.timer) clearInterval(sd.timer); sd = null; sdEl.classList.remove("is-open"); sdEl.setAttribute("aria-hidden", "true"); }
+function photoGrid(arr, kind) { return `<div class="photogrid">${arr.map((p) => `<img src="${p}" alt="">`).join("")}<label class="photoadd2">+<input type="file" accept="image/*" capture="environment" multiple hidden data-shot="${kind}"></label></div>`; }
+
+function renderSD() {
+  const b = sd.booking;
+  if (sd.step === "before") {
+    sdInner.innerHTML = `
+      <div class="sd__top"><button class="sd__close" id="sdClose">✕ Cancel</button><div class="sd__timer" id="sdTimer">${elapsedStr()}</div></div>
+      <div class="sd__hero"><h3>${esc(svcLabel(b))}</h3><p>${esc(b.attendee_name || "")}${b.est_minutes ? ` · est. ${b.est_minutes} min` : ""}${b.price ? ` · ${money(b.price)}` : ""}</p></div>
+      <h4>Before photos</h4>${photoGrid(sd.before, "before")}
+      <h4>Any damage? (document it)</h4>${photoGrid(sd.damage, "damage")}
+      <div class="sd__bar"><button class="btn btn--primary" id="sdContinue">Continue →</button></div>`;
+    document.getElementById("sdClose").onclick = () => { if (confirm("Cancel this detail?")) closeStartDetail(); };
+    document.getElementById("sdContinue").onclick = () => { sd.step = "sop"; renderSD(); };
+  } else if (sd.step === "sop") {
+    const steps = sd.sop.length ? sd.sop : [{ label: "Detail the vehicle", minutes: 60 }];
+    sdInner.innerHTML = `
+      <div class="sd__top"><button class="sd__close" id="sdBack">← Photos</button><div class="sd__timer" id="sdTimer">${elapsedStr()}</div></div>
+      <div class="sd__hero"><h3>${esc(svcLabel(b))}</h3><p>Work the checklist — timer's running.</p></div>
+      <div class="reminder">📸 Grab photos & videos as you go — content for the 'gram!</div>
+      ${steps.map((s, i) => `<div class="sopstep ${sd.checks.has(i) ? "done" : ""}" data-step="${i}"><div class="sopstep__cb">${sd.checks.has(i) ? "✓" : ""}</div><div class="sopstep__l">${esc(s.label)}</div><div class="sopstep__t">${s.minutes || ""}m</div></div>`).join("")}
+      <h4>After photos</h4>${photoGrid(sd.after, "after")}
+      <div class="sd__bar"><button class="btn btn--ghost" id="sdMsg">💬 Wrapping up</button><button class="btn btn--primary" id="sdFinish">Finish ✓</button></div>`;
+    document.getElementById("sdBack").onclick = () => { sd.step = "before"; renderSD(); };
+    sdInner.querySelectorAll(".sopstep").forEach((el) => el.onclick = () => { const i = +el.dataset.step; sd.checks.has(i) ? sd.checks.delete(i) : sd.checks.add(i); renderSD(); });
+    document.getElementById("sdMsg").onclick = () => messageCustomer(b, appSettings.messages?.wrapping_up);
+    document.getElementById("sdFinish").onclick = () => { sd.endTs = Date.now(); if (sd.timer) clearInterval(sd.timer); sd.step = "done"; renderSD(); };
+  } else if (sd.step === "done") {
+    const mins = Math.round((sd.endTs - sd.startTs) / 60000), est = b.est_minutes || 0, diff = mins - est, charge = b.price || 0;
+    sdInner.innerHTML = `<div class="finishcard"><h4>Detail complete</h4>
+      <div class="big">${Math.floor(mins / 60)}h ${mins % 60}m</div><p style="color:var(--muted)">total time</p>
+      <div style="max-width:340px;margin:1.2rem auto 0;text-align:left">
+        <div class="finishrow"><span>Estimated</span><b>${est ? est + " min" : "—"}</b></div>
+        <div class="finishrow"><span>Actual</span><b>${mins} min</b></div>
+        ${est ? `<div class="finishrow"><span>vs estimate</span><b class="${diff > 0 ? "over" : "under"}">${diff > 0 ? "+" : ""}${diff} min</b></div>` : ""}
+      </div>
+      <h4 style="margin-top:1.4rem">Charge customer</h4><div class="charge">${money(charge)}</div>
+      <div class="sd__bar"><button class="btn btn--ghost" id="sdCloseDone">Close</button><button class="btn btn--primary" id="sdPaid">Mark paid</button></div></div>`;
+    document.getElementById("sdCloseDone").onclick = async () => { await saveJob(false); closeStartDetail(); };
+    document.getElementById("sdPaid").onclick = async () => { await saveJob(true); closeStartDetail(); };
+  }
+}
+sdEl.addEventListener("change", async (e) => {
+  const kind = e.target.dataset.shot; if (!kind || !sd) return;
+  for (const f of e.target.files) { sd[kind].push(await fileToDataURL(f)); }
+  renderSD();
+});
+async function saveJob(markPaid) {
+  const b = sd.booking, mins = Math.round((sd.endTs - sd.startTs) / 60000);
+  await sb.from("jobs").insert({ booking_id: b.id, client_id: b.client_id, started_at: new Date(sd.startTs).toISOString(), finished_at: new Date(sd.endTs).toISOString(), duration_seconds: Math.round((sd.endTs - sd.startTs) / 1000), est_minutes: b.est_minutes, before_photos: sd.before, after_photos: sd.after, damage_photos: sd.damage, checklist: { done: [...sd.checks] }, charge_amount: b.price || null, status: "done" });
+  await sb.from("bookings").update({ status: "done" }).eq("id", b.id);
+  if (markPaid && b.client_id && b.price) {
+    const c = clients.find((x) => x.id === b.client_id);
+    const payments = ((c && c.payments) || []).concat([{ amount: b.price, date: new Date().toISOString().slice(0, 10) }]);
+    await sb.from("clients").update({ payments, last_seen: new Date().toISOString().slice(0, 10) }).eq("id", b.client_id);
+  }
+  await loadExtras(); await loadAll(); render(); renderBookings();
+}
+
+/* ----- Settings ----- */
+const settingsBody = document.getElementById("settingsBody");
+function syncSopDOM() {
+  ["interior", "exterior", "bundle"].forEach((svc) => {
+    const cont = settingsBody.querySelector(`[data-sop="${svc}"]`); if (!cont) return;
+    const steps = []; cont.querySelectorAll(".sopedit-step").forEach((row) => steps.push({ label: row.querySelector("input[type=text]").value, minutes: Number(row.querySelector("input[type=number]").value) || 0 }));
+    let so = sops.find((x) => x.service === svc); if (so) so.steps = steps; else sops.push({ service: svc, tier: "all", steps });
+  });
+}
+function renderSettings() {
+  const m = appSettings.messages || {};
+  const byService = {};
+  services.slice().sort((a, b) => (a.tier).localeCompare(b.tier) || (a.size).localeCompare(b.size)).forEach((s) => { (byService[s.service] = byService[s.service] || []).push(s); });
+  const priceRows = ["interior", "exterior", "bundle"].filter((k) => byService[k]).map((svc) => `<div class="price-grp">${cap(svc)}</div>` + byService[svc].map((s) => `<div class="price-row"><span>${cap(s.tier)} · ${s.size.toUpperCase()}</span><input type="number" data-price="${s.id}" value="${s.price}"><input type="number" data-est="${s.id}" value="${s.est_minutes}" title="minutes"></div>`).join("")).join("");
+  const sopBlocks = ["interior", "exterior", "bundle"].map((svc) => {
+    const so = sops.find((x) => x.service === svc); const steps = so ? so.steps : [];
+    return `<div class="price-grp">${cap(svc)} SOP</div><div data-sop="${svc}">${steps.map((st, i) => `<div class="sopedit-step"><input type="text" value="${esc(st.label)}"><input type="number" value="${st.minutes || 0}"><button data-del="${svc}:${i}">×</button></div>`).join("")}</div><button class="btn btn--ghost btn--xs" data-addstep="${svc}">+ Add step</button>`;
+  }).join("");
+  settingsBody.innerHTML = `
+    <div class="set-sec"><h3>Messages</h3>
+      <label class="fld"><span>“On my way” text</span><textarea id="msgOnWay">${esc(m.on_my_way || "")}</textarea></label>
+      <label class="fld" style="margin-top:.6rem"><span>“Wrapping up” text</span><textarea id="msgWrap">${esc(m.wrapping_up || "")}</textarea></label>
+      <p class="set-hint">Tip: type {name} to auto-insert the customer's first name.</p>
+      <button class="btn btn--primary btn--xs" id="saveMsgs" style="margin-top:.6rem">Save messages</button><span class="saved" id="savedMsgs" hidden>Saved ✓</span></div>
+    <div class="set-sec"><h3>Prices &amp; times</h3><div class="set-hint">Price ($) and estimated minutes per package.</div>${priceRows}<button class="btn btn--primary btn--xs" id="savePrices" style="margin-top:.7rem">Save prices</button><span class="saved" id="savedPrices" hidden>Saved ✓</span></div>
+    <div class="set-sec"><h3>SOP checklists</h3>${sopBlocks}<div style="margin-top:.7rem"><button class="btn btn--primary btn--xs" id="saveSops">Save SOPs</button><span class="saved" id="savedSops" hidden>Saved ✓</span></div></div>
+    <div class="set-sec"><h3>Account</h3><button class="btn btn--ghost btn--xs" id="signOut">Sign out</button></div>`;
+  document.getElementById("saveMsgs").onclick = async () => { appSettings.messages = { on_my_way: document.getElementById("msgOnWay").value, wrapping_up: document.getElementById("msgWrap").value }; await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); flash("savedMsgs"); };
+  document.getElementById("savePrices").onclick = async () => { await Promise.all(services.map((s) => sb.from("services").update({ price: Number(settingsBody.querySelector(`[data-price="${s.id}"]`).value), est_minutes: Number(settingsBody.querySelector(`[data-est="${s.id}"]`).value) }).eq("id", s.id))); await loadExtras(); flash("savedPrices"); };
+  document.getElementById("saveSops").onclick = async () => { syncSopDOM(); for (const so of sops) { if (so.id) await sb.from("sops").update({ steps: so.steps }).eq("id", so.id); else await sb.from("sops").insert({ service: so.service, tier: "all", steps: so.steps }); } await loadExtras(); renderSettings(); flash("savedSops"); };
+  settingsBody.querySelectorAll("[data-addstep]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const svc = btn.dataset.addstep; let so = sops.find((x) => x.service === svc); if (so) so.steps.push({ label: "New step", minutes: 5 }); else sops.push({ service: svc, tier: "all", steps: [{ label: "New step", minutes: 5 }] }); renderSettings(); });
+  settingsBody.querySelectorAll("[data-del]").forEach((btn) => btn.onclick = () => { syncSopDOM(); const [svc, i] = btn.dataset.del.split(":"); const so = sops.find((x) => x.service === svc); if (so) { so.steps.splice(+i, 1); renderSettings(); } });
+  document.getElementById("signOut").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+}
+function flash(id) { const el = document.getElementById(id); if (el) { el.hidden = false; setTimeout(() => (el.hidden = true), 1500); } }
+
+/* realtime for bookings + nav render hooks */
+let bkChannel = null;
+function subscribeBookings() { if (bkChannel) return; bkChannel = sb.channel("bk-rt").on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, async () => { await loadExtras(); renderBookings(); render(); }).subscribe(); }
+document.querySelectorAll(".nav__item").forEach((btn) => btn.addEventListener("click", () => { const v = btn.dataset.view; if (v === "bookings") renderBookings(); if (v === "settings") renderSettings(); }));

@@ -44,9 +44,9 @@
       <div class="sidebar__brand"><img src="assets/logo.png" alt="" class="sidebar__logo" /><span>Euro Detailing</span></div>
       <nav class="nav">
         <button class="nav__item is-active" data-view="dashboard"><span class="nav__ico" data-i="dash"></span><span class="nav__lbl">Dashboard</span></button>
+        <button class="nav__item" data-view="bookings"><span class="nav__ico" data-i="book"></span><span class="nav__lbl">Bookings</span></button>
         <button class="nav__item" data-view="clients"><span class="nav__ico" data-i="clients"></span><span class="nav__lbl">Clients</span></button>
-        <button class="nav__item nav__item--soon" data-view="soon" data-label="Bookings"><span class="nav__ico" data-i="book"></span><span class="nav__lbl">Bookings</span></button>
-        <button class="nav__item nav__item--soon" data-view="soon" data-label="Vehicles"><span class="nav__ico" data-i="car"></span><span class="nav__lbl">Vehicles</span></button>
+        <button class="nav__item" data-view="settings"><span class="nav__ico" data-i="gear"></span><span class="nav__lbl">Settings</span></button>
       </nav>
       <button class="sidebar__lock" id="lockBtn">Lock</button>
     </aside>
@@ -82,13 +82,30 @@
         </div>
       </section>
 
-      <!-- Soon -->
-      <section class="view" id="view-soon">
-        <header class="head"><h2 id="soonTitle">Coming soon</h2></header>
-        <div class="empty" id="soonBody"></div>
+      <!-- Bookings -->
+      <section class="view" id="view-bookings">
+        <header class="head head--row">
+          <h2>Bookings</h2>
+          <button class="btn btn--ghost btn--xs" id="syncBtn">↻ Sync</button>
+        </header>
+        <div class="seg" id="bkSeg">
+          <button class="seg__b is-active" data-seg="upcoming">Upcoming</button>
+          <button class="seg__b" data-seg="past">Past</button>
+        </div>
+        <div id="bkList" class="bklist"></div>
+        <div class="empty" id="bkEmpty" hidden>No bookings here yet.</div>
+      </section>
+
+      <!-- Settings -->
+      <section class="view" id="view-settings">
+        <header class="head"><h2>Settings</h2></header>
+        <div id="settingsBody"></div>
       </section>
     </main>
   </div>
+
+  <!-- Start Detail (full-screen flow) -->
+  <div id="sd" class="sd" aria-hidden="true"><div class="sd__inner" id="sdInner"></div></div>
 
   <!-- Add / Edit modal -->
   <div class="modal" id="modal" aria-hidden="true">
