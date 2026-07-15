@@ -307,11 +307,24 @@ const sdEl = document.getElementById("sd"), sdInner = document.getElementById("s
 let sd = null;
 function sopFor(service) { const s = sops.find((x) => x.service === service) || sops.find((x) => x.service === "interior"); return s ? s.steps : []; }
 function elapsedStr() { if (!sd) return "0:00"; const s = Math.floor((Date.now() - sd.startTs) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+function activeStepIndex() { return sd && sd.stepStates ? sd.stepStates.findIndex((s) => s.status === "active") : -1; }
+function fmtMS(sec) { sec = Math.max(0, Math.floor(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; }
+function updateActiveStep() {
+  const el = document.getElementById("activeStep"); if (!el || !sd) return;
+  const i = activeStepIndex(); if (i < 0) return;
+  const st = sd.stepStates[i], target = +el.dataset.target || 0, elapsed = (Date.now() - st.startTs) / 1000;
+  const te = document.getElementById("stepTime"), fill = document.getElementById("stepFill");
+  if (te) te.textContent = fmtMS(elapsed) + (target ? ` / ${Math.round(target / 60)}m` : "");
+  const frac = target ? elapsed / target : 0;
+  if (fill) fill.style.width = Math.min(100, frac * 100) + "%";
+  const over = target && elapsed > target, warn = target && frac >= 0.8 && !over;
+  el.classList.toggle("over", !!over); el.classList.toggle("warn", !!warn);
+}
 
 function openStartDetail(b) {
-  sd = { booking: b, sop: sopFor(b.service), startTs: Date.now(), before: [], damage: [], after: [], checks: new Set(), step: "before", timer: null };
+  sd = { booking: b, sop: sopFor(b.service), startTs: Date.now(), before: [], damage: [], after: [], checks: new Set(), stepStates: null, step: "before", timer: null };
   sdEl.classList.add("is-open"); sdEl.setAttribute("aria-hidden", "false"); renderSD();
-  sd.timer = setInterval(() => { const t = document.getElementById("sdTimer"); if (t) t.textContent = elapsedStr(); }, 1000);
+  sd.timer = setInterval(() => { const t = document.getElementById("sdTimer"); if (t) t.textContent = elapsedStr(); updateActiveStep(); }, 1000);
 }
 function closeStartDetail() { if (sd && sd.timer) clearInterval(sd.timer); sd = null; sdEl.classList.remove("is-open"); sdEl.setAttribute("aria-hidden", "true"); }
 function photoGrid(arr, kind) { return `<div class="photogrid">${arr.map((p) => `<img src="${p}" alt="">`).join("")}<label class="photoadd2">+<input type="file" accept="image/*" capture="environment" multiple hidden data-shot="${kind}"></label></div>`; }
@@ -329,17 +342,36 @@ function renderSD() {
     document.getElementById("sdContinue").onclick = () => { sd.step = "sop"; renderSD(); };
   } else if (sd.step === "sop") {
     const steps = sd.sop.length ? sd.sop : [{ label: "Detail the vehicle", minutes: 60 }];
+    if (!sd.stepStates) { sd.stepStates = steps.map(() => ({ status: "pending", startTs: null, actualSec: 0 })); sd.stepStates[0].status = "active"; sd.stepStates[0].startTs = Date.now(); }
+    const stepsHTML = steps.map((s, i) => {
+      const st = sd.stepStates[i], target = (s.minutes || 0) * 60;
+      if (st.status === "done") {
+        const over = target && st.actualSec > target;
+        return `<div class="sopc done"><div class="sopc__cb">✓</div><div class="sopc__main"><div class="sopc__l">${esc(s.label)}</div></div><div class="sopc__time ${over ? "over" : "good"}">${fmtMS(st.actualSec)}${s.minutes ? ` / ${s.minutes}m` : ""}</div></div>`;
+      }
+      if (st.status === "active") {
+        return `<div class="sopc active" id="activeStep" data-target="${target}"><div class="sopc__cb pulse"></div><div class="sopc__main"><div class="sopc__l">${esc(s.label)}</div><div class="sopc__bar"><div class="sopc__fill" id="stepFill"></div></div></div><div class="sopc__time" id="stepTime">0:00${s.minutes ? ` / ${s.minutes}m` : ""}</div><button class="sopc__done" id="stepDone">Done</button></div>`;
+      }
+      return `<div class="sopc pending"><div class="sopc__cb"></div><div class="sopc__main"><div class="sopc__l">${esc(s.label)}</div></div><div class="sopc__time">${s.minutes ? s.minutes + "m" : ""}</div></div>`;
+    }).join("");
     sdInner.innerHTML = `
       <div class="sd__top"><button class="sd__close" id="sdBack">← Photos</button><div class="sd__timer" id="sdTimer">${elapsedStr()}</div></div>
-      <div class="sd__hero"><h3>${esc(svcLabel(b))}</h3><p>Work the checklist — timer's running.</p></div>
+      <div class="sd__hero"><h3>${esc(svcLabel(b))}</h3><p>Follow the steps — beat the clock ⏱</p></div>
       <div class="reminder">📸 Grab photos & videos as you go — content for the 'gram!</div>
-      ${steps.map((s, i) => `<div class="sopstep ${sd.checks.has(i) ? "done" : ""}" data-step="${i}"><div class="sopstep__cb">${sd.checks.has(i) ? "✓" : ""}</div><div class="sopstep__l">${esc(s.label)}</div><div class="sopstep__t">${s.minutes || ""}m</div></div>`).join("")}
+      <div class="soplist">${stepsHTML}</div>
       <h4>After photos</h4>${photoGrid(sd.after, "after")}
       <div class="sd__bar"><button class="btn btn--ghost" id="sdMsg">💬 Wrapping up</button><button class="btn btn--primary" id="sdFinish">Finish ✓</button></div>`;
     document.getElementById("sdBack").onclick = () => { sd.step = "before"; renderSD(); };
-    sdInner.querySelectorAll(".sopstep").forEach((el) => el.onclick = () => { const i = +el.dataset.step; sd.checks.has(i) ? sd.checks.delete(i) : sd.checks.add(i); renderSD(); });
+    const doneBtn = document.getElementById("stepDone");
+    if (doneBtn) doneBtn.onclick = () => {
+      const i = activeStepIndex(); const st = sd.stepStates[i];
+      st.actualSec = (Date.now() - st.startTs) / 1000; st.status = "done";
+      if (sd.stepStates[i + 1]) { sd.stepStates[i + 1].status = "active"; sd.stepStates[i + 1].startTs = Date.now(); }
+      renderSD();
+    };
     document.getElementById("sdMsg").onclick = () => messageCustomer(b, appSettings.messages?.wrapping_up);
     document.getElementById("sdFinish").onclick = () => { sd.endTs = Date.now(); if (sd.timer) clearInterval(sd.timer); sd.step = "done"; renderSD(); };
+    updateActiveStep();
   } else if (sd.step === "done") {
     const mins = Math.round((sd.endTs - sd.startTs) / 60000), est = b.est_minutes || 0, diff = mins - est, charge = b.price || 0;
     sdInner.innerHTML = `<div class="finishcard"><h4>Detail complete</h4>
