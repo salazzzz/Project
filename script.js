@@ -22,7 +22,7 @@ const loginForm=document.getElementById("loginForm"), emailEl=document.getElemen
       loginErr=document.getElementById("loginError"), loginBtn=document.getElementById("loginBtn");
 
 function showLogin(){ app.classList.remove("app--visible"); login.classList.add("login--visible"); setTimeout(()=>emailEl.focus(),300); }
-async function showApp(){ login.classList.remove("login--visible"); app.classList.add("app--visible"); await loadAll(); await loadExtras(); render(); renderBookings(); subscribeRealtime(); subscribeBookings(); syncCal(); }
+async function showApp(){ login.classList.remove("login--visible"); app.classList.add("app--visible"); await loadAll(); await loadExtras(); applyTheme(appSettings.theme); render(); renderBookings(); subscribeRealtime(); subscribeBookings(); syncCal(); }
 
 loginForm.addEventListener("submit", async e=>{
   e.preventDefault();
@@ -166,6 +166,12 @@ function renderDetail(){
     }
   });
   detailBody.querySelector("#noteEdit").addEventListener("change", async e=>{ await dbPatch(c.id,{notes:e.target.value}); });
+  detailBody.querySelectorAll(".ba__share").forEach(btn=>btn.addEventListener("click", async ()=>{
+    const j=(jobs||[]).find(x=>x.id===btn.dataset.ba); if(!j) return;
+    const orig=btn.textContent; btn.textContent="Building…"; btn.disabled=true;
+    try{ const url=await makeBeforeAfter((j.before_photos||[])[0],(j.after_photos||[])[0],{sub:c.name}); await shareTemplate(url,c.name); }catch(e){}
+    btn.textContent=orig; btn.disabled=false;
+  }));
   detailBody.querySelector("#payAdd").addEventListener("click", async ()=>{
     const amt=parseFloat(detailBody.querySelector("#payAmt").value);
     const date=detailBody.querySelector("#payDate").value || new Date().toISOString().slice(0,10);
@@ -423,7 +429,9 @@ function renderSD() {
         ${est ? `<div class="finishrow"><span>vs estimate</span><b class="${diff > 0 ? "over" : "under"}">${diff > 0 ? "+" : ""}${diff} min</b></div>` : ""}
       </div>
       <h4 style="margin-top:1.4rem">Charge customer</h4><div class="charge">${money(charge)}</div>
+      ${(sd.before[0] && sd.after[0]) ? `<button class="btn btn--ghost" id="sdStory" style="margin-top:.9rem">📸 Make before/after story</button>` : ""}
       <div class="sd__bar"><button class="btn btn--ghost" id="sdCloseDone">Close</button><button class="btn btn--primary" id="sdPaid">Mark paid</button></div></div>`;
+    document.getElementById("sdStory")?.addEventListener("click", async (e) => { const btn = e.target; btn.textContent = "Building…"; try { const url = await makeBeforeAfter(sd.before[0], sd.after[0], { sub: b.attendee_name || "" }); await shareTemplate(url, b.attendee_name); } catch (er) {} btn.textContent = "📸 Make before/after story"; });
     document.getElementById("sdCloseDone").onclick = async () => { await saveJob(false); closeStartDetail(); };
     document.getElementById("sdPaid").onclick = async () => { await saveJob(true); closeStartDetail(); };
   }
@@ -468,7 +476,12 @@ function renderSettings() {
     return `<details class="acc"><summary>${cap(svc)} <span class="acc__count">${steps.length} steps</span></summary><div class="acc__body" data-sop="${svc}">${rows}<button class="btn btn--ghost btn--xs" data-addstep="${svc}">+ Add step</button></div></details>`;
   };
   settingsBody.innerHTML = `
-    <details class="acc" open><summary>Messages</summary><div class="acc__body">
+    <details class="acc" open><summary>Appearance</summary><div class="acc__body">
+      <p class="set-hint" style="margin-top:0">Accent color — recolors buttons, the timer, and highlights.</p>
+      <div class="swatches">${THEME_PRESETS.map((t) => `<button class="swatch${appSettings.theme && appSettings.theme.a === t.a ? " is-sel" : ""}" data-theme="${t.a}|${t.b}" style="background:linear-gradient(135deg,${t.a},${t.b})" title="${t.name}"></button>`).join("")}</div>
+      <label class="fld" style="margin-top:.8rem"><span>Custom color</span><input type="color" id="customColor" class="colorpick" value="${(appSettings.theme && appSettings.theme.a) || "#2b8bff"}"></label>
+    </div></details>
+    <details class="acc"><summary>Messages</summary><div class="acc__body">
       <label class="fld"><span>“On my way” text</span><textarea id="msgOnWay">${esc(m.on_my_way || "")}</textarea></label>
       <label class="fld" style="margin-top:.6rem"><span>“Wrapping up” text</span><textarea id="msgWrap">${esc(m.wrapping_up || "")}</textarea></label>
       <p class="set-hint">Tip: type {name} to auto-insert the customer's first name.</p>
@@ -476,6 +489,9 @@ function renderSettings() {
     <div class="set-group"><div class="set-group__t">Prices &amp; times</div>${["interior", "exterior", "bundle"].map(priceCard).join("")}<button class="btn btn--primary btn--xs" id="savePrices">Save all prices</button><span class="saved" id="savedPrices" hidden>Saved ✓</span></div>
     <div class="set-group"><div class="set-group__t">SOP checklists</div>${["interior", "exterior", "bundle"].map(sopCard).join("")}<button class="btn btn--primary btn--xs" id="saveSops">Save all SOPs</button><span class="saved" id="savedSops" hidden>Saved ✓</span></div>
     <details class="acc"><summary>Account</summary><div class="acc__body"><button class="btn btn--ghost btn--xs" id="signOut">Sign out</button></div></details>`;
+  settingsBody.querySelectorAll("[data-theme]").forEach((b) => b.onclick = async () => { const [a, bb] = b.dataset.theme.split("|"); await saveTheme({ a, b: bb }); renderSettings(); });
+  const _cc = document.getElementById("customColor");
+  if (_cc) { _cc.addEventListener("input", (e) => applyTheme({ a: e.target.value, b: darken(e.target.value) })); _cc.addEventListener("change", (e) => saveTheme({ a: e.target.value, b: darken(e.target.value) })); }
   document.getElementById("saveMsgs").onclick = async () => { appSettings.messages = { on_my_way: document.getElementById("msgOnWay").value, wrapping_up: document.getElementById("msgWrap").value }; await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); flash("savedMsgs"); };
   document.getElementById("savePrices").onclick = async () => { await Promise.all(services.map((s) => { const pe = settingsBody.querySelector(`[data-price="${s.id}"]`), ee = settingsBody.querySelector(`[data-est="${s.id}"]`); return pe ? sb.from("services").update({ price: Number(pe.value), est_minutes: Number(ee.value) }).eq("id", s.id) : null; }).filter(Boolean)); await loadExtras(); flash("savedPrices"); };
   document.getElementById("saveSops").onclick = async () => { syncSopDOM(); for (const so of sops) { if (so.id) await sb.from("sops").update({ steps: so.steps }).eq("id", so.id); else await sb.from("sops").insert({ service: so.service, tier: "all", steps: so.steps }); } await loadExtras(); renderSettings(); flash("savedSops"); };
@@ -541,7 +557,7 @@ function clientHistoryHTML(c) {
   }
   const ba = cj.filter((j) => (j.before_photos && j.before_photos.length) || (j.after_photos && j.after_photos.length));
   if (ba.length) {
-    html += `<div class="dsec"><div class="dsec__h"><h4>Before / after</h4></div>${ba.map((j) => { const bf = (j.before_photos || [])[0], af = (j.after_photos || [])[0]; return `<div class="ba"><div class="ba__pair">${bf ? `<figure class="ba__f"><img src="${bf}" alt=""><figcaption>Before</figcaption></figure>` : ""}${af ? `<figure class="ba__f"><img src="${af}" alt=""><figcaption>After</figcaption></figure>` : ""}</div>${j.finished_at ? `<div class="ba__date">${new Date(j.finished_at).toLocaleDateString()} · ${Math.round((j.duration_seconds || 0) / 60)}m · ${money(j.charge_amount || 0)}</div>` : ""}</div>`; }).join("")}</div>`;
+    html += `<div class="dsec"><div class="dsec__h"><h4>Before / after</h4></div>${ba.map((j) => { const bf = (j.before_photos || [])[0], af = (j.after_photos || [])[0]; return `<div class="ba"><div class="ba__pair">${bf ? `<figure class="ba__f"><img src="${bf}" alt=""><figcaption>Before</figcaption></figure>` : ""}${af ? `<figure class="ba__f"><img src="${af}" alt=""><figcaption>After</figcaption></figure>` : ""}</div>${j.finished_at ? `<div class="ba__date">${new Date(j.finished_at).toLocaleDateString()} · ${Math.round((j.duration_seconds || 0) / 60)}m · ${money(j.charge_amount || 0)}</div>` : ""}<button class="btn btn--ghost btn--xs ba__share" data-ba="${j.id}">📸 Make before/after story</button></div>`; }).join("")}</div>`;
   }
   return html;
 }
@@ -570,3 +586,59 @@ bkForm.addEventListener("submit", async (e) => {
 
 /* analytics nav hook */
 document.querySelectorAll(".nav__item").forEach((btn) => btn.addEventListener("click", () => { if (btn.dataset.view === "analytics") renderAnalytics(); }));
+
+/* =================== Theme + before/after templates =================== */
+const THEME_PRESETS = [
+  { name: "Blue", a: "#2b8bff", b: "#1560d0" },
+  { name: "Cyan", a: "#22d3ee", b: "#0891b2" },
+  { name: "Violet", a: "#a855f7", b: "#7c3aed" },
+  { name: "Green", a: "#22c55e", b: "#15803d" },
+  { name: "Orange", a: "#ff9838", b: "#f97316" },
+  { name: "Red", a: "#ff5c72", b: "#e11d48" },
+  { name: "Pink", a: "#ec4899", b: "#be185d" },
+  { name: "Gold", a: "#f5c542", b: "#d4a017" },
+];
+function darken(hex, amt = 0.25) {
+  const n = parseInt(hex.replace("#", ""), 16); let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  r = Math.round(r * (1 - amt)); g = Math.round(g * (1 - amt)); b = Math.round(b * (1 - amt));
+  return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+function applyTheme(t) {
+  if (!t || !t.a) return;
+  const r = document.documentElement.style;
+  r.setProperty("--blue-1", t.a); r.setProperty("--blue-2", t.b || darken(t.a));
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute("content", "#08090c");
+  try { localStorage.setItem("ed.theme", JSON.stringify(t)); } catch (e) {}
+}
+async function saveTheme(t) { applyTheme(t); appSettings.theme = t; if (ownerId) await sb.from("settings").update({ data: appSettings }).eq("owner", ownerId); }
+try { const _t = JSON.parse(localStorage.getItem("ed.theme")); if (_t) applyTheme(_t); } catch (e) {}
+
+function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
+async function makeBeforeAfter(beforeSrc, afterSrc, opts = {}) {
+  const W = 1080, H = 1080, half = W / 2;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#08090c"; ctx.fillRect(0, 0, W, H);
+  const cover = (img, dx, dy, dw, dh) => { const ar = img.width / img.height, tar = dw / dh; let sw, sh, sx, sy; if (ar > tar) { sh = img.height; sw = sh * tar; sx = (img.width - sw) / 2; sy = 0; } else { sw = img.width; sh = sw / tar; sx = 0; sy = (img.height - sh) / 2; } ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh); };
+  try { if (beforeSrc) cover(await loadImg(beforeSrc), 0, 0, half, H); } catch (e) {}
+  try { if (afterSrc) cover(await loadImg(afterSrc), half, 0, half, H); } catch (e) {}
+  ctx.fillStyle = "#fff"; ctx.fillRect(half - 2, 0, 4, H);
+  ctx.textAlign = "center"; ctx.font = "bold 46px 'Segoe UI',system-ui,sans-serif";
+  const tag = (txt, cx) => { const w = ctx.measureText(txt).width + 46; ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(cx - w / 2, H - 116, w, 70); ctx.fillStyle = "#fff"; ctx.fillText(txt, cx, H - 68); };
+  tag("BEFORE", half / 2); tag("AFTER", half + half / 2);
+  const accent = (getComputedStyle(document.documentElement).getPropertyValue("--blue-1") || "#2b8bff").trim();
+  const grd = ctx.createLinearGradient(0, 0, 0, 140); grd.addColorStop(0, "rgba(8,9,12,.9)"); grd.addColorStop(1, "rgba(8,9,12,0)");
+  ctx.fillStyle = grd; ctx.fillRect(0, 0, W, 140);
+  try { const logo = await loadImg("assets/logo.png"); ctx.drawImage(logo, 28, 20, 88, 88); } catch (e) {}
+  ctx.textAlign = "left"; ctx.fillStyle = "#fff"; ctx.font = "bold 42px 'Segoe UI',system-ui,sans-serif"; ctx.fillText("EURO DETAILING", 132, 76);
+  if (opts.sub) { ctx.textAlign = "right"; ctx.fillStyle = accent; ctx.font = "600 28px 'Segoe UI',system-ui,sans-serif"; ctx.fillText(opts.sub, W - 28, 74); }
+  return cv.toDataURL("image/jpeg", 0.92);
+}
+async function shareTemplate(dataURL, name) {
+  try {
+    const blob = await (await fetch(dataURL)).blob();
+    const file = new File([blob], `euro-detailing-${(name || "before-after").replace(/\s+/g, "-")}.jpg`, { type: "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Euro Detailing" }); return; }
+  } catch (e) {}
+  const a = document.createElement("a"); a.href = dataURL; a.download = "euro-detailing-before-after.jpg"; a.click();
+}

@@ -426,3 +426,22 @@ img{max-width:100%}
 .fld select{background:var(--card-2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:.55rem .6rem;font-size:.86rem;font-family:inherit;appearance:none;-webkit-appearance:none}
 .fld select:focus{outline:none;border-color:var(--blue-1)}
 .bk-price{background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem;font-size:.86rem;color:var(--good);font-weight:700;text-align:center}
+
+/* ===== Theme swatches ===== */
+.swatches{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.5rem}
+.swatch{width:38px;height:38px;border-radius:50%;border:2px solid var(--border);cursor:pointer;transition:transform .15s,border-color .2s}
+.swatch:hover{transform:scale(1.1)}
+.swatch.is-sel{border-color:#fff;box-shadow:0 0 0 2px var(--blue-1)}
+.colorpick{width:100%;height:44px;background:var(--card-2);border:1px solid var(--border);border-radius:9px;padding:.2rem;cursor:pointer}
+.ba__share{margin-top:.5rem;width:100%}
+
+/* ===== UI polish ===== */
+.nav__item{transition:color .15s,transform .1s}
+.nav__item:active{transform:scale(.92)}
+.ccard,.bkcard,.stat,.dstat,.panel,.acc,.anl-card{transition:transform .15s var(--ease),border-color .2s,box-shadow .2s}
+.bkcard:hover,.anl-card:hover{border-color:var(--blue-2)}
+.btn{letter-spacing:.01em}
+.view.is-active{animation:fadein .35s var(--ease)}
+h4{color:var(--muted)}
+.empty{background:var(--card);border-style:dashed}
+::selection{background:var(--blue-2);color:#fff}
