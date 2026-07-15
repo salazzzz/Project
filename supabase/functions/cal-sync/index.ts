@@ -86,9 +86,11 @@ async function fullSync() {
   });
   const j = await res.json();
   const list = j.data || [];
+  const cutoff = Deno.env.get("CAL_SYNC_FROM") || ""; // only import bookings starting on/after this date
   let ok = 0, skipped = 0;
   for (const b of list) {
     if (suppressed.has(b.uid)) { skipped++; continue; }
+    if (cutoff && b.start && b.start < cutoff) { skipped++; continue; } // ignore old/pre-existing bookings
     try { await upsertBooking(b); ok++; } catch (e) { console.error("booking", b.uid, String(e)); }
   }
   return { total: list.length, ok, skipped };
