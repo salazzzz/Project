@@ -1,28 +1,43 @@
-// ===== Euro Detailing CRM =====
-const PASSCODE = "3333";
+// ===== Euro Detailing CRM — cloud (Supabase) =====
+const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 const INTRO = 3200;
-const KEY = "eurodetailing.clients.v2";
 
 const intro = document.getElementById("intro");
 const login = document.getElementById("login");
 const app = document.getElementById("app");
 
-/* ---------- Intro -> Login ---------- */
-function showLogin(){ intro.classList.add("intro--hidden"); login.classList.add("login--visible"); setTimeout(()=>passcode.focus(),400); }
-let introTimer = setTimeout(showLogin, INTRO);
-intro.addEventListener("click", ()=>{ if(intro.classList.contains("intro--hidden"))return; clearTimeout(introTimer); showLogin(); });
+/* ---------- Intro -> auth routing ---------- */
+function afterIntro(){ intro.classList.add("intro--hidden"); routeAuth(); }
+let introTimer = setTimeout(afterIntro, INTRO);
+intro.addEventListener("click", ()=>{ if(intro.classList.contains("intro--hidden"))return; clearTimeout(introTimer); afterIntro(); });
 
-/* ---------- Passcode ---------- */
-const passForm=document.getElementById("passForm"), passcode=document.getElementById("passcode"),
-      loginCard=document.getElementById("loginCard"), passError=document.getElementById("passError");
-function enterApp(){ login.classList.remove("login--visible"); app.classList.add("app--visible"); render(); }
-function tryUnlock(){
-  if(passcode.value===PASSCODE){ passError.textContent=""; enterApp(); }
-  else{ passError.textContent="Wrong passcode — try again"; loginCard.classList.remove("shake"); void loginCard.offsetWidth; loginCard.classList.add("shake"); passcode.value=""; passcode.focus(); }
+async function routeAuth(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session) showApp(); else showLogin();
 }
-passForm.addEventListener("submit", e=>{ e.preventDefault(); tryUnlock(); });
-passcode.addEventListener("input", ()=>{ passError.textContent=""; if(passcode.value.length===4) tryUnlock(); });
-document.getElementById("lockBtn").addEventListener("click", ()=>{ app.classList.remove("app--visible"); login.classList.add("login--visible"); passcode.value=""; setTimeout(()=>passcode.focus(),300); });
+
+/* ---------- Login ---------- */
+const loginForm=document.getElementById("loginForm"), emailEl=document.getElementById("email"),
+      pwEl=document.getElementById("password"), loginCard=document.getElementById("loginCard"),
+      loginErr=document.getElementById("loginError"), loginBtn=document.getElementById("loginBtn");
+
+function showLogin(){ app.classList.remove("app--visible"); login.classList.add("login--visible"); setTimeout(()=>emailEl.focus(),300); }
+async function showApp(){ login.classList.remove("login--visible"); app.classList.add("app--visible"); await loadAll(); render(); subscribeRealtime(); }
+
+loginForm.addEventListener("submit", async e=>{
+  e.preventDefault();
+  loginErr.textContent=""; loginBtn.disabled=true; loginBtn.textContent="Signing in…";
+  const { error } = await sb.auth.signInWithPassword({ email: emailEl.value.trim(), password: pwEl.value });
+  loginBtn.disabled=false; loginBtn.textContent="Sign in";
+  if(error){
+    loginErr.textContent = error.message || "Sign-in failed";
+    loginCard.classList.remove("shake"); void loginCard.offsetWidth; loginCard.classList.add("shake");
+  } else { pwEl.value=""; showApp(); }
+});
+
+document.getElementById("lockBtn").addEventListener("click", async ()=>{
+  unsubscribeRealtime(); await sb.auth.signOut(); clients=[]; showLogin();
+});
 
 /* ---------- Navigation ---------- */
 const navItems=document.querySelectorAll(".nav__item");
@@ -35,46 +50,58 @@ navItems.forEach(btn=>btn.addEventListener("click", ()=>{
   if(v==="clients") search.focus();
 }));
 
-/* ---------- Data ---------- */
-function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) }catch{ return null } }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(clients)) }catch(e){ alert("Storage full — remove some photos."); } }
-let clients = load();
-if(!clients){
-  const today=new Date().toISOString().slice(0,10);
-  clients=[
-    {id:"a",created:Date.now(),name:"John Smith",phone:"555-0142",email:"john@email.com",vehicle:"2021 BMW M4",location:"Miami, FL",notes:"Ceramic coating due in spring.",lastSeen:today,photos:[],payments:[{amount:240,date:today},{amount:180,date:"2025-11-02"}]},
-    {id:"b",created:Date.now(),name:"Maria Garcia",phone:"555-0198",email:"maria@email.com",vehicle:"2019 Audi Q5",location:"Coral Gables",notes:"Prefers weekend drop-off.",lastSeen:"2026-06-20",photos:[],payments:[{amount:140,date:"2026-06-20"}]},
-    {id:"c",created:Date.now()-9*864e5,name:"David Chen",phone:"555-0173",email:"david@email.com",vehicle:"2022 Mercedes C300",location:"Brickell",notes:"Full detail monthly.",lastSeen:"2026-07-01",photos:[],payments:[{amount:300,date:"2026-07-01"},{amount:300,date:"2026-06-01"},{amount:300,date:"2026-05-01"}]}
-  ];
-  save();
+/* ---------- Data (Supabase) ---------- */
+let clients=[];
+function mapRow(r){
+  return { id:r.id, name:r.name, phone:r.phone||"", email:r.email||"", vehicle:r.vehicle||"",
+    location:r.location||"", notes:r.notes||"", lastSeen:r.last_seen||"",
+    created: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+    photos: Array.isArray(r.photos)?r.photos:[], payments: Array.isArray(r.payments)?r.payments:[] };
 }
+function toRow(o){
+  return { name:o.name, phone:o.phone||null, email:o.email||null, vehicle:o.vehicle||null,
+    location:o.location||null, last_seen:o.lastSeen||null, notes:o.notes||null,
+    photos:o.photos||[], payments:o.payments||[] };
+}
+async function loadAll(){
+  const { data, error } = await sb.from("clients").select("*").order("created_at",{ascending:false});
+  if(error){ console.error("load", error); return; }
+  clients = data.map(mapRow);
+}
+async function dbInsert(o){ const { error } = await sb.from("clients").insert(toRow(o)); if(error) alert("Save failed: "+error.message); }
+async function dbUpdate(id,o){ const { error } = await sb.from("clients").update(toRow(o)).eq("id",id); if(error) alert("Update failed: "+error.message); }
+async function dbPatch(id,patch){ const { error } = await sb.from("clients").update(patch).eq("id",id); if(error) alert("Update failed: "+error.message); }
+async function dbDelete(id){ const { error } = await sb.from("clients").delete().eq("id",id); if(error) alert("Delete failed: "+error.message); }
+async function refresh(){ await loadAll(); render(); if(currentId) renderDetail(); }
+
+/* ---------- Realtime sync across devices ---------- */
+let channel=null;
+function subscribeRealtime(){
+  if(channel) return;
+  channel = sb.channel("clients-rt")
+    .on("postgres_changes",{event:"*",schema:"public",table:"clients"}, ()=>{ refresh(); })
+    .subscribe();
+}
+function unsubscribeRealtime(){ if(channel){ sb.removeChannel(channel); channel=null; } }
 
 /* ---------- Helpers ---------- */
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money=n=>"$"+(Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:0});
-function fmtDate(d){ if(!d)return"—"; const dt=new Date(d+(d.length<=10?"T00:00:00":"")); return isNaN(dt)?d:dt.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
+function fmtDate(d){ if(!d)return"—"; const dt=new Date(d+(String(d).length<=10?"T00:00:00":"")); return isNaN(dt)?d:dt.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
 const total=c=>(c.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
 function lastPay(c){ const ps=(c.payments||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")); return ps[0]||null; }
 function lastSeenOf(c){ const lp=lastPay(c); return c.lastSeen || (lp&&lp.date) || null; }
 const initials=n=>(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
 function avatar(c,cls){ return c.photos&&c.photos[0] ? `<img class="${cls}" src="${c.photos[0]}" alt="">` : `<div class="${cls}">${esc(initials(c.name))}</div>`; }
-
-/* Resize an image file to a data URL to keep storage light */
 function fileToDataURL(file,max=900){
-  return new Promise(res=>{
-    const r=new FileReader();
-    r.onload=()=>{ const img=new Image(); img.onload=()=>{
-      let{width:w,height:h}=img; if(w>h&&w>max){h=h*max/w;w=max}else if(h>max){w=w*max/h;h=max}
-      const cv=document.createElement("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
-      res(cv.toDataURL("image/jpeg",0.78));
-    }; img.src=r.result; };
-    r.readAsDataURL(file);
-  });
+  return new Promise(res=>{ const r=new FileReader(); r.onload=()=>{ const img=new Image(); img.onload=()=>{
+    let{width:w,height:h}=img; if(w>h&&w>max){h=h*max/w;w=max}else if(h>max){w=w*max/h;h=max}
+    const cv=document.createElement("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
+    res(cv.toDataURL("image/jpeg",0.78)); }; img.src=r.result; }; r.readAsDataURL(file); });
 }
 
 /* ---------- Clients list ---------- */
-const search=document.getElementById("search"), clientCards=document.getElementById("clientCards"),
-      clientEmpty=document.getElementById("clientEmpty");
+const search=document.getElementById("search"), clientCards=document.getElementById("clientCards"), clientEmpty=document.getElementById("clientEmpty");
 function renderCards(){
   const q=search.value.trim().toLowerCase();
   const f=clients.filter(c=>[c.name,c.phone,c.email,c.vehicle,c.location].some(x=>(x||"").toLowerCase().includes(q)));
@@ -84,16 +111,9 @@ function renderCards(){
   clientCards.innerHTML=f.map(c=>{
     const repeat=(c.payments||[]).length>=2?`<span class="tagrepeat">repeat</span>`:"";
     const meta=c.vehicle||c.phone||c.location||"";
-    return `<article class="ccard" data-open="${c.id}">
-      ${avatar(c,"ccard__avatar")}
-      <div class="ccard__main">
-        <div class="ccard__name">${esc(c.name)} ${repeat}</div>
-        <div class="ccard__meta">${esc(meta)}</div>
-      </div>
-      <div class="ccard__right">
-        <div class="ccard__paid">${money(total(c))}</div>
-        <div class="ccard__seen">${lastSeenOf(c)?fmtDate(lastSeenOf(c)):"—"}</div>
-      </div>
+    return `<article class="ccard" data-open="${c.id}">${avatar(c,"ccard__avatar")}
+      <div class="ccard__main"><div class="ccard__name">${esc(c.name)} ${repeat}</div><div class="ccard__meta">${esc(meta)}</div></div>
+      <div class="ccard__right"><div class="ccard__paid">${money(total(c))}</div><div class="ccard__seen">${lastSeenOf(c)?fmtDate(lastSeenOf(c)):"—"}</div></div>
     </article>`;
   }).join("");
 }
@@ -104,61 +124,45 @@ search.addEventListener("input", renderCards);
 const clRoot=document.querySelector("#view-clients .cl"), detailBody=document.getElementById("detailBody"),
       detailPlaceholder=document.getElementById("detailPlaceholder"), contentEl=document.querySelector(".content");
 let currentId=null;
-
 function openDetail(id){ currentId=id; renderDetail(); clRoot.classList.add("showing-detail"); detailPlaceholder.style.display="none"; detailBody.hidden=false; contentEl.scrollTop=0; }
 function closeDetail(){ clRoot.classList.remove("showing-detail"); currentId=null; detailBody.hidden=true; detailPlaceholder.style.display=""; }
 
 function renderDetail(){
-  const c=clients.find(x=>x.id===currentId); if(!c) return;
+  const c=clients.find(x=>x.id===currentId); if(!c){ closeDetail(); return; }
   const lp=lastPay(c);
   const photos=(c.photos&&c.photos.length)?c.photos.map((p,i)=>`<img src="${p}" alt="photo ${i+1}">`).join(""):`<span class="nophoto">No photos yet.</span>`;
   const pays=(c.payments&&c.payments.length)?c.payments.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p=>`<div class="pay"><span>${fmtDate(p.date)}</span><b>${money(p.amount)}</b></div>`).join(""):`<div class="pay"><span style="color:var(--muted)">No payments logged.</span></div>`;
   const row=(l,v)=>v?`<div class="drow"><span class="drow__l">${l}</span><span class="drow__v">${esc(v)}</span></div>`:"";
   detailBody.innerHTML=`
-    <div class="detail__top">
-      <button class="detail__back" id="detailBack">← Back</button>
-      <div class="detail__title">${esc(c.name)}</div>
-    </div>
+    <div class="detail__top"><button class="detail__back" id="detailBack">← Back</button><div class="detail__title">${esc(c.name)}</div></div>
     <div class="detail__hero">${avatar(c,"detail__avatar")}
       <div>${(c.payments||[]).length>=2?`<span class="tagrepeat">repeat client</span>`:""}
-      <div style="color:var(--muted);font-size:.82rem;margin-top:.2rem">${esc(c.vehicle||"")}</div></div>
-    </div>
+      <div style="color:var(--muted);font-size:.82rem;margin-top:.2rem">${esc(c.vehicle||"")}</div></div></div>
     <div class="dstats">
       <div class="dstat"><span class="dstat__l">Last seen</span><span class="dstat__v">${lastSeenOf(c)?fmtDate(lastSeenOf(c)):"—"}</span></div>
       <div class="dstat"><span class="dstat__l">Last payment</span><span class="dstat__v">${lp?money(lp.amount):"—"}</span></div>
       <div class="dstat"><span class="dstat__l">Total paid</span><span class="dstat__v good">${money(total(c))}</span></div>
     </div>
-    <div class="drows">
-      ${row("Phone",c.phone)}${row("Email",c.email)}${row("Vehicle",c.vehicle)}${row("Location",c.location)}
-      ${(!c.phone&&!c.email&&!c.vehicle&&!c.location)?'<div class="drow"><span class="drow__l">No contact info yet</span></div>':""}
-    </div>
+    <div class="drows">${row("Phone",c.phone)}${row("Email",c.email)}${row("Vehicle",c.vehicle)}${row("Location",c.location)}
+      ${(!c.phone&&!c.email&&!c.vehicle&&!c.location)?'<div class="drow"><span class="drow__l">No contact info yet</span></div>':""}</div>
     <div class="dsec"><div class="dsec__h"><h4>Photos</h4></div><div class="photos">${photos}</div></div>
-    <div class="dsec"><div class="dsec__h"><h4>Payments</h4></div>
-      ${pays}
-      <div class="payadd">
-        <input type="number" id="payAmt" placeholder="Amount" min="0" />
-        <input type="date" id="payDate" value="${new Date().toISOString().slice(0,10)}" />
-        <button class="btn btn--primary btn--xs" id="payAdd">Add</button>
-      </div>
-    </div>
+    <div class="dsec"><div class="dsec__h"><h4>Payments</h4></div>${pays}
+      <div class="payadd"><input type="number" id="payAmt" placeholder="Amount" min="0" /><input type="date" id="payDate" value="${new Date().toISOString().slice(0,10)}" /><button class="btn btn--primary btn--xs" id="payAdd">Add</button></div></div>
     <div class="dsec"><div class="dsec__h"><h4>Notes</h4></div><textarea class="noteedit" id="noteEdit" placeholder="Add notes about this client…">${esc(c.notes||"")}</textarea></div>
-    <div class="detail__actions">
-      <button class="btn btn--ghost btn--xs" id="detailEdit">Edit</button>
-      <button class="btn btn--danger btn--xs" id="detailDelete">Delete</button>
-    </div>`;
+    <div class="detail__actions"><button class="btn btn--ghost btn--xs" id="detailEdit">Edit</button><button class="btn btn--danger btn--xs" id="detailDelete">Delete</button></div>`;
 
   detailBody.querySelector("#detailBack").addEventListener("click", closeDetail);
   detailBody.querySelector("#detailEdit").addEventListener("click", ()=>openModal(c));
-  detailBody.querySelector("#detailDelete").addEventListener("click", ()=>{
-    if(confirm(`Delete ${c.name}? This can't be undone.`)){ clients=clients.filter(x=>x.id!==c.id); save(); closeDetail(); render(); }
+  detailBody.querySelector("#detailDelete").addEventListener("click", async ()=>{
+    if(confirm(`Delete ${c.name}? This can't be undone.`)){ await dbDelete(c.id); closeDetail(); await refresh(); }
   });
-  detailBody.querySelector("#noteEdit").addEventListener("input", e=>{ c.notes=e.target.value; save(); });
-  detailBody.querySelector("#payAdd").addEventListener("click", ()=>{
+  detailBody.querySelector("#noteEdit").addEventListener("change", async e=>{ await dbPatch(c.id,{notes:e.target.value}); });
+  detailBody.querySelector("#payAdd").addEventListener("click", async ()=>{
     const amt=parseFloat(detailBody.querySelector("#payAmt").value);
-    const date=detailBody.querySelector("#payDate").value;
-    if(!amt||amt<=0){ return; }
-    c.payments=c.payments||[]; c.payments.push({amount:amt,date:date||new Date().toISOString().slice(0,10)});
-    c.lastSeen=date; save(); renderDetail(); renderCards(); renderDashboard();
+    const date=detailBody.querySelector("#payDate").value || new Date().toISOString().slice(0,10);
+    if(!amt||amt<=0) return;
+    const payments=(c.payments||[]).concat([{amount:amt,date}]);
+    await dbPatch(c.id,{ payments, last_seen:date }); await refresh();
   });
 }
 
@@ -168,15 +172,9 @@ const modal=document.getElementById("modal"), clientForm=document.getElementById
       fVehicle=document.getElementById("fVehicle"), fLocation=document.getElementById("fLocation"), fLastSeen=document.getElementById("fLastSeen"),
       fNotes=document.getElementById("fNotes"), fPhotos=document.getElementById("fPhotos"), photoEdit=document.getElementById("photoEdit");
 let editId=null, editPhotos=[];
-
-function renderPhotoEdit(){
-  photoEdit.innerHTML=editPhotos.map((p,i)=>`<div class="photoedit__item"><img src="${p}" alt=""><button type="button" class="photoedit__del" data-ph="${i}">×</button></div>`).join("");
-}
+function renderPhotoEdit(){ photoEdit.innerHTML=editPhotos.map((p,i)=>`<div class="photoedit__item"><img src="${p}" alt=""><button type="button" class="photoedit__del" data-ph="${i}">×</button></div>`).join(""); }
 photoEdit.addEventListener("click", e=>{ const i=e.target.dataset.ph; if(i!=null){ editPhotos.splice(+i,1); renderPhotoEdit(); } });
-fPhotos.addEventListener("change", async e=>{
-  for(const file of e.target.files){ editPhotos.push(await fileToDataURL(file)); }
-  renderPhotoEdit(); fPhotos.value="";
-});
+fPhotos.addEventListener("change", async e=>{ for(const file of e.target.files){ editPhotos.push(await fileToDataURL(file)); } renderPhotoEdit(); fPhotos.value=""; });
 
 function openModal(c){
   editId=c?c.id:null; editPhotos=c?(c.photos||[]).slice():[];
@@ -191,15 +189,16 @@ document.getElementById("addBtn").addEventListener("click", ()=>openModal(null))
 modal.querySelectorAll("[data-close]").forEach(el=>el.addEventListener("click", closeModal));
 document.addEventListener("keydown", e=>{ if(e.key==="Escape"&&modal.classList.contains("is-open")) closeModal(); });
 
-clientForm.addEventListener("submit", e=>{
+clientForm.addEventListener("submit", async e=>{
   e.preventDefault();
   const name=fName.value.trim(); if(!name) return;
-  const data={ name, phone:fPhone.value.trim(), email:fEmail.value.trim(), vehicle:fVehicle.value.trim(),
-    location:fLocation.value.trim(), lastSeen:fLastSeen.value, notes:fNotes.value.trim(), photos:editPhotos.slice() };
-  if(editId){ clients=clients.map(c=>c.id===editId?{...c,...data}:c); }
-  else { clients.unshift({ id:Date.now().toString(36), created:Date.now(), payments:[], ...data }); }
-  save(); closeModal(); render();
-  if(editId===currentId && currentId) renderDetail();
+  const existing = editId ? clients.find(c=>c.id===editId) : null;
+  const o={ name, phone:fPhone.value.trim(), email:fEmail.value.trim(), vehicle:fVehicle.value.trim(),
+    location:fLocation.value.trim(), lastSeen:fLastSeen.value, notes:fNotes.value.trim(),
+    photos:editPhotos.slice(), payments: existing ? existing.payments : [] };
+  const saveBtn=clientForm.querySelector('button[type=submit]'); saveBtn.disabled=true;
+  if(editId) await dbUpdate(editId,o); else await dbInsert(o);
+  saveBtn.disabled=false; closeModal(); await refresh();
 });
 
 /* ---------- Dashboard ---------- */

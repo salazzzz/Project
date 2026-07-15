@@ -22,17 +22,18 @@
     <div class="intro__loader"><div class="intro__loader-bar"></div></div>
   </section>
 
-  <!-- ===== Passcode ===== -->
+  <!-- ===== Login ===== -->
   <main id="login" class="login" aria-hidden="true">
     <div class="login__card" id="loginCard">
       <img src="assets/logo.png" alt="Euro Detailing" class="login__logo" />
       <div class="login__title">Euro Detailing</div>
-      <p class="login__subtitle">Enter passcode to continue</p>
-      <form id="passForm">
-        <input type="password" id="passcode" class="login__input" inputmode="numeric" placeholder="• • • •" autocomplete="off" maxlength="8" aria-label="Passcode" />
-        <button type="submit" class="btn btn--primary">Unlock</button>
+      <p class="login__subtitle">Sign in to your account</p>
+      <form id="loginForm">
+        <input type="email" id="email" class="login__input login__input--text" placeholder="Email" autocomplete="username" required />
+        <input type="password" id="password" class="login__input login__input--text" placeholder="Password" autocomplete="current-password" required />
+        <button type="submit" class="btn btn--primary" id="loginBtn">Sign in</button>
       </form>
-      <p class="login__error" id="passError"></p>
+      <p class="login__error" id="loginError"></p>
     </div>
   </main>
 
@@ -115,6 +116,8 @@
     </form>
   </div>
 
+  <script src="config.js"></script>
+  <script src="vendor/supabase.js"></script>
   <script src="script.js"></script>
   <script>
     if ("serviceWorker" in navigator) {

@@ -9,10 +9,16 @@ create table if not exists clients (
   id uuid primary key default gen_random_uuid(),
   owner uuid not null default auth.uid() references auth.users on delete cascade,
   name text not null,
-  phone text, email text, location text, notes text,
+  phone text, email text, vehicle text, location text, notes text,
   last_seen date,
+  photos jsonb not null default '[]'::jsonb,
+  payments jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
+-- If the table already existed, make sure the newer columns are present:
+alter table clients add column if not exists vehicle text;
+alter table clients add column if not exists photos jsonb not null default '[]'::jsonb;
+alter table clients add column if not exists payments jsonb not null default '[]'::jsonb;
 
 create table if not exists vehicles (
   id uuid primary key default gen_random_uuid(),

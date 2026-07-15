@@ -1,10 +1,12 @@
 // Euro Detailing — service worker (offline app shell)
-const CACHE = "euro-detailing-v1";
+const CACHE = "euro-detailing-v2";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./script.js",
+  "./config.js",
+  "./vendor/supabase.js",
   "./manifest.json",
   "./assets/logo.png",
   "./assets/icon-192.png",
