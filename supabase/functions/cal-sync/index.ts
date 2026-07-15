@@ -78,14 +78,20 @@ async function upsertBooking(b: any) {
 }
 
 async function fullSync() {
+  // Bookings the owner deleted in-app — never re-create these.
+  const supp = await rest(`suppressed?owner=eq.${OWNER}&select=cal_uid`);
+  const suppressed = new Set((supp || []).map((s: any) => s.cal_uid));
   const res = await fetch("https://api.cal.com/v2/bookings?take=100&sortStart=desc", {
     headers: { Authorization: `Bearer ${CAL_KEY}`, "cal-api-version": "2024-08-13" },
   });
   const j = await res.json();
   const list = j.data || [];
-  let ok = 0;
-  for (const b of list) { try { await upsertBooking(b); ok++; } catch (e) { console.error("booking", b.uid, String(e)); } }
-  return { total: list.length, ok };
+  let ok = 0, skipped = 0;
+  for (const b of list) {
+    if (suppressed.has(b.uid)) { skipped++; continue; }
+    try { await upsertBooking(b); ok++; } catch (e) { console.error("booking", b.uid, String(e)); }
+  }
+  return { total: list.length, ok, skipped };
 }
 
 Deno.serve(async () => {

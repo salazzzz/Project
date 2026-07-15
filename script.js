@@ -131,7 +131,7 @@ function renderDetail(){
   const c=clients.find(x=>x.id===currentId); if(!c){ closeDetail(); return; }
   const lp=lastPay(c);
   const photos=(c.photos&&c.photos.length)?c.photos.map((p,i)=>`<img src="${p}" alt="photo ${i+1}">`).join(""):`<span class="nophoto">No photos yet.</span>`;
-  const pays=(c.payments&&c.payments.length)?c.payments.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p=>`<div class="pay"><span>${fmtDate(p.date)}</span><b>${money(p.amount)}</b></div>`).join(""):`<div class="pay"><span style="color:var(--muted)">No payments logged.</span></div>`;
+  const pays=(c.payments&&c.payments.length)?c.payments.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(p=>{const i=c.payments.indexOf(p);return `<div class="pay" data-pi="${i}"><span>${fmtDate(p.date)}</span><span class="pay__r"><b>${money(p.amount)}</b><button class="pay__b" data-payedit="${i}">✎</button><button class="pay__b pay__del" data-paydel="${i}">✕</button></span></div>`;}).join(""):`<div class="pay"><span style="color:var(--muted)">No payments logged.</span></div>`;
   const row=(l,v)=>v?`<div class="drow"><span class="drow__l">${l}</span><span class="drow__v">${esc(v)}</span></div>`:"";
   detailBody.innerHTML=`
     <div class="detail__top"><button class="detail__back" id="detailBack">← Back</button><div class="detail__title">${esc(c.name)}</div></div>
@@ -154,7 +154,15 @@ function renderDetail(){
   detailBody.querySelector("#detailBack").addEventListener("click", closeDetail);
   detailBody.querySelector("#detailEdit").addEventListener("click", ()=>openModal(c));
   detailBody.querySelector("#detailDelete").addEventListener("click", async ()=>{
-    if(confirm(`Delete ${c.name}? This can't be undone.`)){ await dbDelete(c.id); closeDetail(); await refresh(); }
+    if(confirm(`Delete ${c.name}? Their Cal.com bookings are removed too and won't re-sync.`)){
+      // Suppress this client's Cal bookings so the auto-sync won't recreate them.
+      const { data: bks } = await sb.from("bookings").select("cal_uid").eq("client_id", c.id);
+      const uids = (bks||[]).filter(b=>b.cal_uid).map(b=>({ owner: ownerId, cal_uid: b.cal_uid }));
+      if(uids.length) await sb.from("suppressed").upsert(uids, { onConflict: "owner,cal_uid" });
+      await sb.from("bookings").delete().eq("client_id", c.id);
+      await dbDelete(c.id);
+      closeDetail(); await refresh(); if(typeof loadExtras==="function"){ await loadExtras(); renderBookings(); }
+    }
   });
   detailBody.querySelector("#noteEdit").addEventListener("change", async e=>{ await dbPatch(c.id,{notes:e.target.value}); });
   detailBody.querySelector("#payAdd").addEventListener("click", async ()=>{
@@ -164,6 +172,20 @@ function renderDetail(){
     const payments=(c.payments||[]).concat([{amount:amt,date}]);
     await dbPatch(c.id,{ payments, last_seen:date }); await refresh();
   });
+  detailBody.querySelectorAll("[data-paydel]").forEach(b=>b.addEventListener("click", async ()=>{
+    const i=+b.dataset.paydel;
+    if(confirm("Delete this payment?")){ const payments=(c.payments||[]).slice(); payments.splice(i,1); await dbPatch(c.id,{payments}); await refresh(); }
+  }));
+  detailBody.querySelectorAll("[data-payedit]").forEach(b=>b.addEventListener("click", ()=>{
+    const i=+b.dataset.payedit, p=c.payments[i], rowEl=b.closest(".pay");
+    rowEl.innerHTML=`<input type="number" class="pe-amt" value="${p.amount}" min="0" /><input type="date" class="pe-date" value="${p.date||''}" /><button class="btn btn--primary btn--xs" data-pesave>Save</button>`;
+    rowEl.querySelector("[data-pesave]").addEventListener("click", async ()=>{
+      const amt=parseFloat(rowEl.querySelector(".pe-amt").value); const date=rowEl.querySelector(".pe-date").value;
+      if(!amt||amt<=0) return;
+      const payments=(c.payments||[]).slice(); payments[i]={...payments[i], amount:amt, date:date||payments[i].date};
+      await dbPatch(c.id,{payments}); await refresh();
+    });
+  }));
 }
 
 /* ---------- Add / Edit modal ---------- */

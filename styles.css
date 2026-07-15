@@ -268,3 +268,11 @@ img{max-width:100%}
 .sopedit-step button{background:var(--card-2);border:1px solid var(--border);color:var(--danger);border-radius:8px;padding:0 .6rem;cursor:pointer}
 .set-hint{color:var(--muted);font-size:.78rem;margin-top:.4rem}
 .saved{color:var(--good);font-size:.8rem;margin-left:.5rem}
+
+/* payment edit/delete */
+.pay__r{display:flex;align-items:center;gap:.5rem}
+.pay__b{background:var(--card-2);border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:.15rem .45rem;font-size:.75rem;cursor:pointer;line-height:1}
+.pay__b:hover{color:var(--text)}
+.pay__del:hover{color:var(--danger);border-color:var(--danger)}
+.pay .pe-amt,.pay .pe-date{background:var(--card-2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:.3rem .4rem;font-size:.8rem}
+.pay .pe-amt{width:76px}
